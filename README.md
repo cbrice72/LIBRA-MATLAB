@@ -7,6 +7,8 @@ Collection of MATLAB scripts, apps, and Simulink models for use in the LIBRA pro
 - [Fluid System](#fluid-system)
 - [Forward Kinematics](#forward-kinematics)
 - [Revolute Joint](#revolute-joint)
+- [Other Info](#other-info)
+    - [*Formatting*](#formatting)
 
 ## Analysis
 
@@ -27,3 +29,29 @@ Apps and scripts defining forward kinematics calculations and visualizations of 
 ## Revolute Joint
 
 Helper scripts related to the revolute joint on `LIBRA-II` (sometimes called `REVJNT`).
+
+---
+
+## Other Info
+
+### *Formatting*
+
+You can use the included M-script [MBeautifier](https://github.com/davidvarga/MBeautifier) to format your code.
+To add `format-code` as a MATLAB command to edit your active file, edit/create the following files in your MATLAB user path (if you're not sure where that is, type `userpath` into your Command window).
+
+#### **startup.m**
+
+Make sure to replace `<PATH-TO-THIS-REPO>` with the full path to this repository.
+
+```matlab
+% MBeautifier - MATLAB Code Formatting
+addpath("<PATH-TO-THIS-REPO>\thirdparty\MBeautifier")
+```
+
+#### **format-code.m**
+
+```matlab
+function format-code()
+    MBeautify.formatCurrentEditorPage();
+end
+```
