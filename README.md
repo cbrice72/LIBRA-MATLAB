@@ -2,6 +2,12 @@
 
 Collection of MATLAB scripts, apps, and Simulink models for use in the LIBRA project.
 
+Note that if you did not pull the submodules when you cloned this project, you can do so by executing the following command.
+
+```bash
+git submodule update --init
+```
+
 - [Analysis](#analysis)
 - [ETA](#eta)
 - [Fluid System](#fluid-system)
