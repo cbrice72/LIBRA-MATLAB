@@ -191,11 +191,11 @@
       </SpecialRule>
       <SpecialRule>
          <Key>SectionPrecedingNewlineCount</Key>
-         <Value>1</Value>
+         <Value>2</Value>
       </SpecialRule>
       <SpecialRule>
          <Key>SectionTrailingNewlineCount</Key>
-         <Value>2</Value>
+         <Value>1</Value>
       </SpecialRule>
 	  <SpecialRule>
          <Key>StartingNewlineCount</Key>
@@ -251,7 +251,7 @@
       </SpecialRule>
       <SpecialRule>
          <Key>Indentation_Strategy</Key>
-         <Value>NestedFunctions</Value>
+         <Value>AllFunctions</Value>
       </SpecialRule>
    </SpecialRules>
 </MBeautifyRuleConfiguration>

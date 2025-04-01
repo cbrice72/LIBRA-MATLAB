@@ -1,6 +1,8 @@
-clc; clear; close all;
+clc;
+clear;
+close all;
 
-warning('off', 'MATLAB:readtable:ModifiedVarnames');  % accounted for in code
+warning('off', 'MATLAB:readtable:ModifiedVarnames'); % accounted for in code
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % @file   analyze_arm_configurations.m
@@ -13,19 +15,23 @@ warning('off', 'MATLAB:readtable:ModifiedVarnames');  % accounted for in code
 % @date   2025/4/1
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
 %% SETUP
+
 % Working files
 %inputFilePath = 'C:\Users\brice\Desktop\Projects\LIBRA\Archive\2024-11-28 Upgraded LIBRA-I Test (2nd attempt)\log\2024年11月25日_16時27分09秒_continuous_log.csv';
 outputFilePath = 'arm_configurations.xlsx';
 
 % Script options
-positionTolerance = 1.0;  % position tolerance, degrees
+positionTolerance = 1.0; % position tolerance, degrees
 
 % Mechancial properties (HEBI X8-16)
-contTorqueLimit = 16.0;  % continuous torque limit, Nm
-peakTorqueLimit = 38.0;  % peak torque limit, Nm
+contTorqueLimit = 16.0; % continuous torque limit, Nm
+peakTorqueLimit = 38.0; % peak torque limit, Nm
+
 
 %% BODY
+
 % Initialize statistical variables
 total_kept = 0;
 total_points = 0;
@@ -58,8 +64,9 @@ end
 
 fprintf('\n--- DONE ---\n');
 fprintf('  Files Processed:   %d\n', length(inputFilePaths));
-fprintf('  Lines Considered:  %d of %d (%.1f%%)\n', total_kept, total_points, 100 * total_kept / total_points);
+fprintf('  Lines Considered:  %d of %d (%.1f%%)\n', total_kept, total_points, 100*total_kept/total_points);
 fprintf('  Added to Database: %d stable, %d borderline, %d unstable\n', total_stable, total_borderline, total_unstable)
+
 
 %% FUNCTIONS
 
@@ -71,14 +78,14 @@ fprintf('  Added to Database: %d stable, %d borderline, %d unstable\n', total_st
 function inputFilePaths = queryUserForInputs()
     inputFilePaths = {};
     lastDirPath = '';
-    
+
     % Loop until user cancels selection, allowing user to specify files from
     % multiple directories
     while true
         % Prompt user to select file(s) for processing
         [files, path] = uigetfile({'*.*', 'All Files (*.*)'}, ...
-                                   'Select Files', lastDirPath, ...
-                                   'MultiSelect', 'on');
+            'Select Files', lastDirPath, ...
+            'MultiSelect', 'on');
 
         % Check if the user canceled the selection
         if isequal(files, 0)
@@ -87,7 +94,7 @@ function inputFilePaths = queryUserForInputs()
 
         % Update loop variables
         inputFilePaths = [inputFilePaths, fullfile(path, files)];
-        lastDirPath = path;  % store directory path for consistent selection
+        lastDirPath = path; % store directory path for consistent selection
     end
 
     % Ensure we get a cell array even if only one file is selected
@@ -133,18 +140,18 @@ function [keptCount, totalCount, stableCount, borderlineCount, unstableCount] = 
     end
 
     fprintf('(1) Loaded %d data points from file.\n', height(data));
-    
+
     % (1b) Find required columns
     requiredPositionCols = {'TP_Roll_deg_', 'TP_Pitch_deg_', 'TP_J1_deg_', 'TP_J2_deg_', 'TP_J3_deg_'};
     requiredTorqueCols = {'PT_Roll_Nm_', 'PT_Pitch_Nm_', 'PT_J1_Nm_', 'PT_J2_Nm_', 'PT_J3_Nm_'};
-    
+
     positionCols = findMatchingColumns(data, requiredPositionCols);
     torqueCols = findMatchingColumns(data, requiredTorqueCols);
-    
+
     if length(positionCols) < 5 || length(torqueCols) < 5
         error('Required columns ("TP_*", "PT_*") not found!');
     end
-    
+
     % (2) Filter for unique configurations
     fprintf('(2) Scanning data for unique entries...\n');
     filteredData = consolidateData(data, positionCols, torqueCols, positionTolerance);
@@ -159,12 +166,12 @@ function [keptCount, totalCount, stableCount, borderlineCount, unstableCount] = 
         fprintf('(~) No data to add after filtering, skipping further processing.\n');
         return;
     end
-    
+
     % (3) Categorize configurations
     fprintf('(3) Categorizing configurations based on torque limits...\n');
     contLimits = repmat(contTorqueLimit, 1, 5); % Same limit for all actuators
     peakLimits = repmat(peakTorqueLimit, 1, 5); % Same limit for all actuators
-    
+
     [stableConfig, borderlineConfig, unstableConfig] = categorizeConfigurations(filteredData, ...
         torqueCols, contLimits, peakLimits);
 
@@ -174,7 +181,7 @@ function [keptCount, totalCount, stableCount, borderlineCount, unstableCount] = 
 
     fprintf('    ... initial stats: %d stable, %d borderline, %d unstable.\n', ...
         stableCount, borderlineCount, unstableCount);
-    
+
     % (4) Check for existing configuration output file to avoid duplicates
     fprintf('(4) Checking for existing configuration database to avoid duplicates...\n');
     if exist(outputFilePath, 'file')
@@ -191,7 +198,7 @@ function [keptCount, totalCount, stableCount, borderlineCount, unstableCount] = 
     else
         fprintf('    ... "%s" not found; adding all entries.\n', outputFilePath);
     end
-    
+
     % Sort configurations and save to file
     stableConfig = sortConfigsByPos(stableConfig, positionCols);
     borderlineConfig = sortConfigsByPos(borderlineConfig, positionCols);
@@ -201,7 +208,7 @@ function [keptCount, totalCount, stableCount, borderlineCount, unstableCount] = 
 
     % Apply conditional formatting to torque cells
     applyTorqueCellColoring(outputFilePath, 'All Configurations', ...
-    strcat('mean_', requiredTorqueCols), contTorqueLimit, peakTorqueLimit);
+        strcat('mean_', requiredTorqueCols), contTorqueLimit, peakTorqueLimit);
 end
 
 %{
@@ -212,19 +219,19 @@ end
 
     @return matchedCols Cell array of column names that were found in the data
 %}
-function matchedCols = findMatchingColumns(data, requiredCols)   
+function matchedCols = findMatchingColumns(data, requiredCols)
     tableVars = data.Properties.VariableNames;
     matchedCols = cell(1, length(requiredCols));
-    
+
     for i = 1:length(requiredCols)
         % Look for exact column name match
         exactMatch = strcmp(tableVars, requiredCols{i});
-        
+
         if any(exactMatch)
             matchedCols{i} = requiredCols{i};
         end
     end
-    
+
     % Remove empty cells (columns not found)
     matchedCols = matchedCols(~cellfun('isempty', matchedCols));
 end
@@ -242,32 +249,32 @@ end
 %}
 function filteredData = consolidateData(data, positionCols, torqueCols, positionTolerance)
     % Round miniscule position values to the nearest integer (basically 0)
-    threshold = 7;  % 1E7
+    threshold = 7; % 1E7
     data{:, positionCols} = round(data{:, positionCols}, threshold);
-    
+
     % Remove rows with non-integer position values, as these represent the
     % automatically-calculated trajectory between user-input position commands
     data(any(mod(data{:, positionCols}, 1) ~= 0, 2), :) = [];
 
     if isempty(data)
         filteredData = table();
-        return;  % no valid data remaining after filtering, return empty table
+        return; % no valid data remaining after filtering, return empty table
     end
-    
+
     % Compute average torques for each unique position set
     % (this also consolidates the dataset and prepends torque columns with "mean_")
     groupedData = varfun(@mean, data, 'InputVariables', torqueCols, 'GroupingVariables', positionCols);
-    
+
     % Filter position values based on a specified range (if "1", no change)
     diffs = [true; any(abs(diff(groupedData{:, positionCols})) > positionTolerance, 2)];
 
     if isempty(data)
         filteredData = table();
-        return;  % no significant position changes detected, return empty table
+        return; % no significant position changes detected, return empty table
     end
 
     filteredData = groupedData(diffs, :);
-    
+
     % Sort before returning
     filteredData = sortrows(filteredData, positionCols);
 end
@@ -287,13 +294,13 @@ end
 %}
 function [stableConfigs, borderlineConfigs, unstableConfigs] = categorizeConfigurations(data, torqueCols, contLimits, peakLimits)
     numRows = height(data);
-    category = zeros(numRows, 1);  % 0: stable, 1: borderline, 2: unstable
-    
+    category = zeros(numRows, 1); % 0: stable, 1: borderline, 2: unstable
+
     for i = 1:numRows
         % Check torque values against limits
         for j = 1:length(torqueCols)
             torqueVal = abs(data.(['mean_', torqueCols{j}])(i));
-            
+
             if torqueVal > peakLimits(j)
                 % Exceeds peak limit - unstable
                 category(i) = 2;
@@ -304,7 +311,7 @@ function [stableConfigs, borderlineConfigs, unstableConfigs] = categorizeConfigu
             end
         end
     end
-    
+
     % Split data based on category
     stableConfigs = data(category == 0, :);
     borderlineConfigs = data(category == 1, :);
@@ -328,7 +335,7 @@ function data = sortConfigsByPos(data, positionCols)
         for i = 1:length(positionCols)
             sortMatrix(:, i) = data.(positionCols{i});
         end
-        
+
         % Sort data based on all position columns
         [~, idx] = sortrows(sortMatrix);
         data = data(idx, :);
@@ -368,37 +375,37 @@ function [stableConfigs, borderlineConfigs, unstableConfigs] = removeDuplicates(
     if isempty(existingConfigs)
         return;
     end
-    
+
     % Define helper function to find and remove duplicates
     function newData = removeDupsFromExisting(newData, existingData, posCols)
         if isempty(newData) || isempty(existingData)
             return;
         end
-        
+
         toRemove = false(height(newData), 1);
-        
+
         for ih = 1:height(newData)
             for jh = 1:height(existingData)
                 matching = true;
-                
+
                 % Check if all position values match
                 for k = 1:length(posCols)
-                    if abs(newData.(posCols{k})(ih) - existingData.(posCols{k})(jh)) > 0.01
+                    if abs(newData.(posCols{k})(ih)-existingData.(posCols{k})(jh)) > 0.01
                         matching = false;
                         break;
                     end
                 end
-                
+
                 if matching
                     toRemove(ih) = true;
                     break;
                 end
             end
         end
-        
+
         newData = newData(~toRemove, :);
     end
-    
+
     % Check if position columns exist in existing config
     existingPosCols = positionCols;
     for i = length(positionCols):-1:1
@@ -406,11 +413,11 @@ function [stableConfigs, borderlineConfigs, unstableConfigs] = removeDuplicates(
             existingPosCols(i) = [];
         end
     end
-    
+
     if isempty(existingPosCols)
         % Try to find equivalent columns
         possiblePosCols = existingConfigs.Properties.VariableNames(contains(existingConfigs.Properties.VariableNames, {'TP_', 'Roll', 'Pitch', 'J1', 'J2', 'J3'}) & ...
-                                                                  contains(existingConfigs.Properties.VariableNames, {'deg', '[deg]'}, 'IgnoreCase', true));
+            contains(existingConfigs.Properties.VariableNames, {'deg', '[deg]'}, 'IgnoreCase', true));
         if length(possiblePosCols) >= 5
             existingPosCols = possiblePosCols(1:5);
         else
@@ -418,7 +425,7 @@ function [stableConfigs, borderlineConfigs, unstableConfigs] = removeDuplicates(
             return;
         end
     end
-    
+
     % Remove duplicates from each category
     stableConfigs = removeDupsFromExisting(stableConfigs, existingConfigs, existingPosCols);
     borderlineConfigs = removeDupsFromExisting(borderlineConfigs, existingConfigs, existingPosCols);
@@ -438,45 +445,45 @@ function saveConfigs(filePath, stableConfigs, borderlineConfigs, unstableConfigs
         fprintf('No [new] configurations to save.\n');
         return;
     end
-    
+
     try
         % Combine all configurations
         allConfig = [stableConfigs; borderlineConfigs; unstableConfigs];
-        
+
         % Create stability label column
         stability = cell(height(allConfig), 1);
         if ~isempty(stableConfigs)
             stability(1:height(stableConfigs)) = {'Stable (within limits)'};
         end
-        
+
         if ~isempty(borderlineConfigs)
             stability(height(stableConfigs)+(1:height(borderlineConfigs))) = {'Borderline (exceeds continuous limits)'};
         end
-        
+
         if ~isempty(unstableConfigs)
             stability(height(stableConfigs)+height(borderlineConfigs)+(1:height(unstableConfigs))) = {'Unstable (exceeds peak limits)'};
         end
-        
+
         % Add stability labels to data, rewriting GroupCount (we don't need it)
         allConfig.GroupCount = stability;
         allConfig.Properties.VariableNames{'GroupCount'} = 'Stability';
-        
+
         % Save combined table to primary sheet
         writetable(allConfig, filePath, 'Sheet', 'All Configurations', 'WriteMode', 'append');
-        
+
         % Save individual tables to separate sheets
         if ~isempty(stableConfigs)
             writetable(stableConfigs, filePath, 'Sheet', 'Stable', 'WriteMode', 'append');
         end
-        
+
         if ~isempty(borderlineConfigs)
             writetable(borderlineConfigs, filePath, 'Sheet', 'Borderline', 'WriteMode', 'append');
         end
-        
+
         if ~isempty(unstableConfigs)
             writetable(unstableConfigs, filePath, 'Sheet', 'Unstable', 'WriteMode', 'append');
         end
-        
+
         fprintf('Configurations saved to "%s"\n', filePath);
     catch e
         error('Error saving configurations: %s', e.message);
@@ -496,13 +503,12 @@ end
 function applyTorqueCellColoring(filePath, sheetName, torqueCols, contTorqueLimit, peakTorqueLimit)
     % Open Excel file
     excel = actxserver('Excel.Application');
-    excel.Visible = false;  % true: make it visible for debugging
-                            % false: silent execution
+    excel.Visible = false; % true: visible for debugging | false: silent execution
     try
-        filePath = fullfile(pwd, filePath);  % excel needs a full filepath
+        filePath = fullfile(pwd, filePath); % excel needs a full filepath
         workbook = excel.Workbooks.Open(filePath);
         sheet = workbook.Sheets.Item(sheetName);
-        data = sheet.UsedRange.Value;  % read the whole sheet
+        data = sheet.UsedRange.Value; % read the whole sheet
 
         if isempty(data)
             error("Sheet data is empty or unreadable!");
@@ -510,16 +516,16 @@ function applyTorqueCellColoring(filePath, sheetName, torqueCols, contTorqueLimi
 
         % Find column indices for torque values
         torqueIndices = find(ismember(data(1, :), torqueCols));
-        
+
         % Define colors (RGB)
-        lightGreen = [198, 239, 206];   % stable
-        lightYellow = [255, 235, 156];  % borderline
-        lightRed = [255, 199, 206];     % unstable
+        lightGreen = [198, 239, 206]; % stable
+        lightYellow = [255, 235, 156]; % borderline
+        lightRed = [255, 199, 206]; % unstable
 
         % Apply coloring to relevant cells
-        for row = 2:size(data, 1)  % skip header row
+        for row = 2:size(data, 1) % skip header row
             for col = torqueIndices
-                torqueVal = abs(data{row, col});  % ensure absolute value
+                torqueVal = abs(data{row, col}); % ensure absolute value
 
                 % Get current cell
                 xlCell = strcat(intToExcelCol(col), num2str(row));
@@ -557,11 +563,11 @@ end
 %}
 function str = intToExcelCol(num)
     raw = 'A':'Z';
-    str = raw(1 + rem(num-1, 26));
-    tmp = fix((num-1) / 26);
+    str = raw(1+rem(num-1, 26));
+    tmp = fix((num - 1)/26);
     while any(tmp)
-        str = [raw(1 + rem(tmp-1, 26)),str];  % #ok<AGROW>
-        tmp = fix((tmp-1) / 26);
+        str = [raw(1+rem(tmp-1, 26)), str]; % #ok<AGROW>
+        tmp = fix((tmp - 1)/26);
     end
     str = string(str);
 end
