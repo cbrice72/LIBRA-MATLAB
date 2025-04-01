@@ -48,10 +48,10 @@ Make sure to replace `<PATH-TO-THIS-REPO>` with the full path to this repository
 addpath("<PATH-TO-THIS-REPO>\thirdparty\MBeautifier")
 ```
 
-#### **format-code.m**
+#### **format_code.m**
 
 ```matlab
-function format-code()
+function format_code()
     MBeautify.formatCurrentEditorPage();
 end
 ```
