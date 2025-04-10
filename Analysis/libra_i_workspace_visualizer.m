@@ -15,145 +15,249 @@ close all;
 %% SETUP
 
 % Working files
-in_file = 'target_arm_configurations.xlsx';
+in_file = 'output/target_arm_configs.xlsx';
 
 % Physical properties
 link_len = [1.112, 0.989, 1.006, 0.938]; % m, 2DJNT -L1-> J1 -L2-> J2 -L3-> J3 -L4-> End
 
+
 %% BODY
 
-% Read data from Excel file
-data = readtable(in_file);
+% Load data
+[joint_angles, torque_statuses] = loadArmConfigData(in_file);
 
-% Extract relevant data by column name
-angle_col_names = {'TP_Roll_deg_', 'TP_Pitch_deg_', 'TP_J1_deg_', 'TP_J2_deg_', 'TP_J3_deg_'};
-status_col_name = 'Stability';
+% Compute end effector positions
+positions = computeEndEffectorPositions(joint_angles, link_len);
 
-joint_angles = table2array(data(:, angle_col_names));  % numeric matrix
-torque_status = data.(status_col_name);  % cell array of strings
+% Filter invalid positions (e.g., behind the robot)
+valid = positions(:, 3) >= 0;
+valid_positions = positions(valid, :);
+valid_statuses = torque_statuses(valid);
 
-% Calculate end effector position at every arm configuration
-num_positions = size(joint_angles, 1);
-end_effector_positions = zeros(num_positions, 3);
+% Plot data
+colors = statusToColor(valid_statuses);
 
-for i = 1:num_positions
-    % Extract joint angles
-    angles_rad = deg2rad(joint_angles(i, :));
-    roll = angles_rad(1);
-    pitch = angles_rad(2);
-    j1 = angles_rad(3);
-    j2 = angles_rad(4);
-    j3 = angles_rad(5);
-    
-    % Initialize transformation matrix
-    T = eye(4);  % identity matrix
-    
-    % 2-DoF joint
-    T = T * rotx(roll) * roty(pitch);  % roll & pitch in same physical location
-    
-    % Arm joints (translate along z-axis, then apply joint rotation)
-    T = T * [1 0 0 0; 0 1 0 0; 0 0 1 link_len(1); 0 0 0 1] * rotz(j1);  % yaw
-    T = T * [1 0 0 0; 0 1 0 0; 0 0 1 link_len(2); 0 0 0 1] * rotz(j2);  % yaw
-    T = T * [1 0 0 0; 0 1 0 0; 0 0 1 link_len(3); 0 0 0 1] * roty(j3);  % pitch
-    
-    % End effector position
-    end_pos = T * [0; 0; link_len(4); 1];
-    end_effector_positions(i, :) = end_pos(1:3)';
-end
-
-% Determine point colors based on torque status
-colors = zeros(num_positions, 3);
-for i = 1:num_positions
-    switch torque_status{i}
-        case 'Stable (within limits)'
-            colors(i, :) = [0 1 0]; % green
-        case 'Borderline (exceeds continuous limits)'
-            colors(i, :) = [1 1 0]; % yellow
-        case 'Unstable (exceeds peak limits)'
-            colors(i, :) = [1 0 0]; % red
-        otherwise
-            colors(i, :) = [0.5 0.5 0.5]; % gray
-    end
-end
-
-% Plot end effector positions
-figure;
-scatter3(end_effector_positions(:, 1), end_effector_positions(:, 2), end_effector_positions(:, 3), 50, colors, 'filled');
-
-title('Robot Arm End Effector Positions');
-xlabel('X Position (m)');
-ylabel('Y Position (m)');
-zlabel('Z Position (m)');
-
-grid on;
-axis equal;
-
-% Add a legend
-hold on;
-h1 = scatter3(NaN, NaN, NaN, 50, [0 1 0], 'filled');
-h2 = scatter3(NaN, NaN, NaN, 50, [1 1 0], 'filled');
-h3 = scatter3(NaN, NaN, NaN, 50, [1 0 0], 'filled');
-legend([h1 h2 h3], {'Stable', 'Borderline', 'Unstable'});
-
-%% Optional: Visualize a specific arm configuration
-% Uncomment and modify this section if you want to visualize the arm itself for a specific configuration
-
-% selected_config = 1; % Index of configuration to visualize
-% 
-% % Extract joint angles for this position (convert to radians)
-% angles_rad = joint_angles(selected_config, :) * pi/180;
-% 
-% % Initialize joint positions
-% joint_positions = zeros(5, 3);
-% joint_positions(1, :) = [0, 0, 0]; % Base/central joint
-% 
-% % Calculate joint positions
-% T = eye(4);
-% 
-% % Central joint (roll and pitch)
-% T = T * rotx(angles_rad(1)) * roty(angles_rad(2));
-% 
-% % First joint position after central joint transformation
-% T_temp = T * [0; 0; links(1); 1];
-% joint_positions(2, :) = T_temp(1:3)';
-% 
-% % First arm joint (yaw)
-% T = T * [1 0 0 0; 0 1 0 0; 0 0 1 links(1); 0 0 0 1] * rotz(angles_rad(3));
-% 
-% % Second joint position
-% T_temp = T * [0; 0; links(2); 1];
-% joint_positions(3, :) = T_temp(1:3)';
-% 
-% % Second arm joint (yaw)
-% T = T * [1 0 0 0; 0 1 0 0; 0 0 1 links(2); 0 0 0 1] * rotz(angles_rad(4));
-% 
-% % Third joint position
-% T_temp = T * [0; 0; links(3); 1];
-% joint_positions(4, :) = T_temp(1:3)';
-% 
-% % Third arm joint (pitch)
-% T = T * [1 0 0 0; 0 1 0 0; 0 0 1 links(3); 0 0 0 1] * roty(angles_rad(5));
-% 
-% % End effector position
-% T_temp = T * [0; 0; links(4); 1];
-% joint_positions(5, :) = T_temp(1:3)';
-% 
-% % Create a new figure for arm visualization
-% figure;
-% plot3(joint_positions(:, 1), joint_positions(:, 2), joint_positions(:, 3), 'k-', 'LineWidth', 2);
-% hold on;
-% scatter3(joint_positions(:, 1), joint_positions(:, 2), joint_positions(:, 3), 100, 'r', 'filled');
-% scatter3(joint_positions(5, 1), joint_positions(5, 2), joint_positions(5, 3), 150, 'b', 'filled');
-% xlabel('X Position (m)');
-% ylabel('Y Position (m)');
-% zlabel('Z Position (m)');
-% title(['Robot Arm Configuration ', num2str(selected_config)]);
-% grid on;
-% axis equal;
-% legend('Links', 'Joints', 'End Effector');
+plotEndEffectorPositions(valid_positions, colors);
+plotBaseAndDirections();
+plotWorkspace(valid_positions, valid_statuses);
 
 
 %% FUNCTIONS
+
+%{
+    @brief Loads arm configuration data from an Excel file generated by
+           `analyze_arm_configurations.m`.
+
+    @param filename  Path to the Excel file containing arm configurations
+
+    @return joint_angles  Matrix of joint angles (deg) for each configuration
+    @return torque_statuses  Array of torque stability status for each configuration
+%}
+function [joint_angles, torque_statuses] = loadArmConfigData(filename)
+    data = readtable(filename);
+
+    angle_col_names = {'TP_Roll_deg_', 'TP_Pitch_deg_', 'TP_J1_deg_', 'TP_J2_deg_', 'TP_J3_deg_'};
+    status_col_name = 'Stability';
+
+    joint_angles = table2array(data(:, angle_col_names));
+    torque_statuses = data.(status_col_name);
+end
+
+%{
+    @brief Computes the end effector positions based on joint angles and link lengths
+
+    @param joint_angles  Matrix of joint angles (deg) for each configuration
+                         (e.g., [roll pitch j1 j2 j3])
+    @param link_len      Array of link lengths for each arm segment
+                         (e.g., [2DoF-J1 J1-J2 J2-J3 J3-End])
+
+    @return positions    Matrix of end effector positions in 3D space
+%}
+function positions = computeEndEffectorPositions(joint_angles, link_len)
+    num_positions = size(joint_angles, 1);
+    positions = zeros(num_positions, 3);
+
+    for i = 1:num_positions
+        angles = deg2rad(joint_angles(i, :));
+
+        T = eye(4); % identity matrix
+        T = T * rotx(angles(1)) * roty(angles(2)); % roll + pitch
+        T = T * translateZ(link_len(1)) * rotz(angles(3)); % yaw
+        T = T * translateZ(link_len(2)) * rotz(angles(4)); % yaw
+        T = T * translateZ(link_len(3)) * roty(angles(5)); % pitch
+
+        end_pos = T * [0; 0; link_len(4); 1];
+        positions(i, :) = end_pos(1:3)';
+    end
+end
+
+%{
+    @brief Converts torque stability status into RGB colors (for visualization).
+
+    @param status_list  Cell array of torque stability statuses
+
+    @return colors  Matrix of RGB values corresponding to the statuses
+%}
+function colors = statusToColor(status_list)
+    colors = zeros(length(status_list), 3);
+
+    for i = 1:length(status_list)
+        switch status_list{i}
+            case 'Stable (within limits)'
+                colors(i, :) = [0, 1, 0]; % green
+            case 'Borderline (exceeds continuous limits)'
+                colors(i, :) = [1, 1, 0]; % yellow
+            case 'Unstable (exceeds peak limits)'
+                colors(i, :) = [1, 0, 0]; % red
+            otherwise % just in case
+                colors(i, :) = [0.5, 0.5, 0.5];
+        end
+    end
+end
+
+%{
+    @brief Plots end effector positions, colorized by stability.
+
+    @param positions  Matrix of valid end effector positions
+    @param colors     Matrix of RGB colors for each position
+%}
+function plotEndEffectorPositions(positions, colors)
+    % Plot end effector positions
+    scatter3(positions(:, 3), positions(:, 2), -positions(:, 1), 50, colors, 'filled');
+
+    % Add labels
+    title('Robot Arm End Effector Positions');
+    xlabel('Z Position (m)');
+    ylabel('Y Position (m)');
+    zlabel('X Position (m)');
+
+    grid on;
+    axis equal;
+    hold on;
+
+    % Plot legend
+    h1 = scatter3(NaN, NaN, NaN, 50, [0, 1, 0], 'filled'); % stable
+    h2 = scatter3(NaN, NaN, NaN, 50, [1, 1, 0], 'filled'); % borderline
+    h3 = scatter3(NaN, NaN, NaN, 50, [1, 0, 0], 'filled'); % unstable
+    L = legend([h1, h2, h3, h4], {'Stable', 'Borderline', 'Unstable'}, 'Location', 'best');
+
+    % Nothing else should be added to the legend, so disable its updates
+    L.AutoUpdate = 'off';
+end
+
+%{
+    @brief Plots the workspace mesh and relevant information.
+
+    @param positions  Matrix of valid end effector positions
+    @param status     Array of torque stability status for each position
+%}
+function plotWorkspace(positions, status)
+    % Only consider stable (and, optionally, borderline stable) configurations
+    stable_mask = strcmp(status, 'Stable (within limits)');
+    %stable_mask = strcmp(torque_status, 'Stable (within limits)') | strcmp(torque_status(valid_idxs), 'Borderline (exceeds continuous limits)');
+    stable_positions = positions(stable_mask, :);
+
+    % Since LIBRA-I is practically almost symmetrical, let's assume endpoint
+    % symmetry along the Y axis
+    mirrored = stable_positions;
+    mirrored(:, 2) = -abs(stable_positions(:, 2));
+    combined = [stable_positions; mirrored];
+
+    % Plot an orange mesh
+    K = convhull(combined(:, 3), combined(:, 2), -combined(:, 1));
+    trisurf(K, combined(:, 3), combined(:, 2), -combined(:, 1), ...
+        'FaceColor', [1, 0.5, 0], 'FaceAlpha', 0.3, ...
+        'EdgeColor', [1, 0.25, 0], 'LineWidth', 0.5);
+
+    % Compute workspace statistics and "translate" into human-readable string
+    volume = getConvHullVolume(combined, K);
+    info_str = sprintf([ ...
+        'Workspace Volume: %.3f m³\nX Reach: +%.3f / %.3f m\nY Reach: +%.3f / %.3f m\nZ Reach: +%.3f / %.3f m'], ...
+        volume, max(combined(:, 1)), min(combined(:, 1)), ...
+        max(combined(:, 2)), min(combined(:, 2)), ...
+        max(combined(:, 3)), min(combined(:, 3)));
+
+    % Determine appropriate background color for annotation
+    ax_bg = get(gca, 'Color');
+    if mean(ax_bg) < 0.5 % dark mode
+        text_color = [1, 1, 1];
+        box_color = [0.2, 0.2, 0.2];
+        edge_color = [0.4, 0.4, 0.4];
+    else % light mode
+        text_color = [0, 0, 0];
+        box_color = [1, 1, 1];
+        edge_color = [0.8, 0.8, 0.8];
+    end
+
+    % Add annotation to right of plot
+    annotation('textbox', [0.70, 0.73, 0.28, 0.2], 'String', info_str, ...
+        'FitBoxToText', 'on', 'BackgroundColor', box_color, ...
+        'EdgeColor', edge_color, 'Color', text_color, 'FontSize', 10);
+end
+
+%{
+    @brief Plots LIBRA-I's base (2-DoF Joint) and directional axes for reference.
+%}
+function plotBaseAndDirections()
+    base_w = 0.165; % m
+    base_h = 0.170; % m
+    base_d = 0.160; % m
+
+    vertices = [; ...
+        -base_h / 2, -base_w / 2, 0; ... % front, bottom left
+        base_h / 2, -base_w / 2, 0; ... % front, bottom right
+        base_h / 2, base_w / 2, 0; ... % back, bottom right
+        -base_h / 2, base_w / 2, 0; ... % back, bottom left
+        -base_h / 2, -base_w / 2, base_d; ... % front, top left
+        base_h / 2, -base_w / 2, base_d; ... % front, top right
+        base_h / 2, base_w / 2, base_d; ... % back, top right
+        -base_h / 2, base_w / 2, base_d; ... % back, top left
+        ];
+
+    faces = [; ...
+        1, 2, 3, 4; ... % bottom
+        5, 6, 7, 8; ... % top
+        1, 2, 6, 5; ... % front
+        2, 3, 7, 6; ... % right
+        3, 4, 8, 7; ... % back
+        4, 1, 5, 8; ... % left
+        ];
+
+    face_colors = {; ...
+        [1, 0, 0]; ... % bottom (X)
+        [1, 0, 0]; ... % top (X)
+        [0, 1, 0]; ... % front (Z)
+        [0, 0, 1]; ... % right (Y)
+        [0, 1, 0]; ... % back (Z)
+        [0, 0, 1]; ... % left (Y)
+        };
+
+    for i = 1:6
+        patch('Vertices', vertices, 'Faces', faces(i, :), 'FaceColor', face_colors{i});
+    end
+
+    arrow_len = 0.5;
+    quiver3(0, 0, 0, 0, 0, arrow_len, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.7); % X
+    quiver3(0, 0, 0, 0, arrow_len, 0, 'g', 'LineWidth', 2, 'MaxHeadSize', 0.7); % Y
+    quiver3(0, 0, 0, arrow_len, 0, 0, 'b', 'LineWidth', 2, 'MaxHeadSize', 0.7); % Z
+
+    %text(0, 0, arrow_length+0.1, 'Up', 'Color', 'r');
+    %text(0, arrow_length+0.1, 0, 'Left', 'Color', 'g');
+    %text(arrow_length+0.1, 0, 0, 'Forward', 'Color', 'b');
+end
+
+%{
+    @brief Creates a homogeneous transformation matrix representing a
+           translation along the Z-axis.
+
+    @param dist  Translation distance along the Z-axis
+
+    @return T  4x4 homogeneous transformation matrix
+%}
+function T = translateZ(dist)
+    T = eye(4);
+    T(3, 4) = dist;
+end
 
 %{
     @brief Creates a homogeneous transformation matrix representating a rotation
@@ -164,7 +268,7 @@ legend([h1 h2 h3], {'Stable', 'Borderline', 'Unstable'});
     @return R  Rotation matrix about the X-axis
 %}
 function R = rotx(angle)
-    R = [1 0 0 0; 0 cos(angle) -sin(angle) 0; 0 sin(angle) cos(angle) 0; 0 0 0 1];
+    R = [1, 0, 0, 0; 0, cos(angle), -sin(angle), 0; 0, sin(angle), cos(angle), 0; 0, 0, 0, 1];
 end
 
 %{
@@ -176,7 +280,7 @@ end
     @return R  Rotation matrix about the Y-axis
 %}
 function R = roty(angle)
-    R = [cos(angle) 0 sin(angle) 0; 0 1 0 0; -sin(angle) 0 cos(angle) 0; 0 0 0 1];
+    R = [cos(angle), 0, sin(angle), 0; 0, 1, 0, 0; -sin(angle), 0, cos(angle), 0; 0, 0, 0, 1];
 end
 
 %{
@@ -188,5 +292,26 @@ end
     @return R  Rotation matrix about the Z-axis
 %}
 function R = rotz(angle)
-    R = [cos(angle) -sin(angle) 0 0; sin(angle) cos(angle) 0 0; 0 0 1 0; 0 0 0 1];
+    R = [cos(angle), -sin(angle), 0, 0; sin(angle), cos(angle), 0, 0; 0, 0, 1, 0; 0, 0, 0, 1];
+end
+
+%{
+    @brief Computes the volume enclosed by a 3D convex hull.
+
+    @param points  Vertex coordinates forming the convex hull
+    @param faces   Indices defining the triangular faces of the hull
+
+    @return vol  Volume enclosed by the convex hull (in cubic meters)
+%}
+function vol = getConvHullVolume(points, faces)
+    vol = 0;
+    for i = 1:size(faces, 1)
+        p1 = points(faces(i, 1), :);
+        p2 = points(faces(i, 2), :);
+        p3 = points(faces(i, 3), :);
+
+        tetra_volume = dot(p1, cross(p2, p3)) / 6;
+        vol = vol + tetra_volume;
+    end
+    vol = abs(vol);
 end
