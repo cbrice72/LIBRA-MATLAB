@@ -26,10 +26,11 @@ target_positions_only = true; % true: only consider operator target positions
 position_tolerance = 1.0; % degrees
 
 % Working files
+mkdir('output'); % just in case
 if target_positions_only
-    out_file = 'target_arm_configs.xlsx';
+    out_file = 'output/target_arm_configs.xlsx';
 else
-    out_file = 'all_arm_configs.xlsx';
+    out_file = 'output/all_arm_configs.xlsx';
 end
 
 % Mechancial properties (HEBI X8-16)
@@ -213,7 +214,7 @@ function [num_kept, num_total, num_stable, num_borderline, num_unstable] = proce
         error('Error loading file: "%s"', e.message);
     end
 
-    fprintf('(1) Loaded %d data points from file.\n', height(data));
+    fprintf('[1/4] Loaded %d data points from file.\n', height(data));
 
     % (1b) Find required columns
     pos_col_names = {'TP_Roll_deg_', 'TP_Pitch_deg_', 'TP_J1_deg_', 'TP_J2_deg_', 'TP_J3_deg_'};
@@ -227,22 +228,22 @@ function [num_kept, num_total, num_stable, num_borderline, num_unstable] = proce
     end
 
     % (2) Filter for unique configurations
-    fprintf('(2) Scanning data for unique entries...\n');
+    fprintf('[2/4] Isolating unique entries...    ');
     filtered_data = processData(data, pos_cols, torque_cols, pos_tolerance, target_pos_only);
-
+    
     num_kept = height(filtered_data);
     num_total = height(data);
 
-    fprintf('    ... %d of %d data points remain (%.1f%%).\n', ...
-        num_kept, num_total, 100*num_kept/num_total);
-
     if isempty(filtered_data)
-        fprintf('(!) No data to add after filtering, skipping further processing.\n');
+        fprintf('\n(!) No data to add after filtering, skipping further processing.\n');
         return;
     end
 
+    fprintf('%d of %d data points remain (%.1f%%).\n', ...
+        num_kept, num_total, 100*num_kept/num_total);
+
     % (3) Categorize configurations
-    fprintf('(3) Categorizing configurations based on torque limits...\n');
+    fprintf('[3/4] Categorizing configurations... ');
     [stable, borderline, unstable] = categorizeConfigurations(filtered_data, ...
         torque_cols, cont_torque_lim, peak_torque_lim);
 
@@ -250,11 +251,11 @@ function [num_kept, num_total, num_stable, num_borderline, num_unstable] = proce
     num_borderline = height(borderline);
     num_unstable = height(unstable);
 
-    fprintf('    ... initial stats: %d stable, %d borderline, %d unstable.\n', ...
+    fprintf('count by bin: %d stable, %d borderline, %d unstable.\n', ...
         num_stable, num_borderline, num_unstable);
 
     % (4) Check for existing configuration output file to avoid duplicates
-    fprintf('(4) Checking for existing configuration database to avoid duplicates...\n');
+    fprintf('[4/4] Checking existing database...  ');
     if exist(out_file, 'file')
         existing_db = readExistingDatabase(out_file);
         [stable, borderline, unstable] = removeDuplicates(existing_db, ...
@@ -264,10 +265,10 @@ function [num_kept, num_total, num_stable, num_borderline, num_unstable] = proce
         num_borderline = height(borderline);
         num_unstable = height(unstable);
 
-        fprintf('    ... new entries: %d stable, %d borderline, %d unstable.\n', ...
+        fprintf('new entries:  %d stable, %d borderline, %d unstable.\n', ...
             num_stable, num_borderline, num_unstable);
     else
-        fprintf('    ... "%s" not found; adding all entries.\n', out_file);
+        fprintf('"%s" not found; adding all entries.\n', out_file);
     end
 
     % Sort configurations and save to file
