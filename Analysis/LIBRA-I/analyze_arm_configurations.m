@@ -21,8 +21,8 @@ warning('off', 'MATLAB:readtable:ModifiedVarnames'); % accounted for in code
 % Script options
 manual_file_selection = false; % true: user searches & selects files
                                % false: user selects directory, script searches
-target_positions_only = true; % true: only consider operator target positions
-                              % false: also consider interpolated positions
+target_positions_only = false; % true: only consider operator target positions
+                               % false: also consider interpolated positions
 position_tolerance = 1.0; % degrees
 
 % Working files
@@ -49,7 +49,7 @@ total_unstable = 0;
 
 % Get files to process
 if ~manual_file_selection
-    in_files = findFilesByKeyRecursive('_continuous_log.csv');
+    in_files = findFilesByKeyRecursive('_continuous_log');
 else
     in_files = queryUserForInputs();
 end
@@ -88,12 +88,11 @@ fprintf('  Added to Database: %d stable, %d borderline, %d unstable\n', total_st
 
     @param search_key  Filename string/substring to search for
 
-    @return files  Cell array of file paths matching the search key
+    @return files  Array of file paths matching the search key
 %}
 function files = findFilesByKeyRecursive(search_key)
     % Let user specify top-level search directory
     start_dir = uigetdir(pwd, 'Select a directory to search recursively');
-
     if start_dir == 0
         disp('Directory selection canceled by user.');
         files = {};
@@ -113,7 +112,7 @@ end
     @param directory   Path to the directory to search
     @param search_key  String pattern to search for
 
-    @return files  Cell array of file paths matching the search criteria
+    @return files  Array of file paths matching the search criteria
 %}
 function files = findFilesWithKey(directory, search_key)
     files = {};
@@ -132,11 +131,12 @@ function files = findFilesWithKey(directory, search_key)
 
         % If the item is a directory, recursively search it
         if items(i).isdir
-            subfiles = findFilesWithKey(full_path, search_key);
-            files = [files; subfiles];
+            subdir_files = findFilesWithKey(full_path, search_key);
+            files = [files; subdir_files];
         else
             % If the item is a file, check if it contains the search key
-            if contains(items(i).name, search_key)
+            [~, ~, ext] = fileparts(items(i).name);
+            if contains(items(i).name, search_key) && strcmpi(ext, '.csv')
                 files{end+1, 1} = full_path;
             end
         end
@@ -146,7 +146,7 @@ end
 %{
     @brief Prompts the user to select multiple input files for processing.
 
-    @returns in_files  Cell array of all selected files
+    @returns in_files  Array of all selected files
 %}
 function in_files = queryUserForInputs()
     in_files = {};
@@ -170,7 +170,7 @@ function in_files = queryUserForInputs()
         last_dir = path; % store directory path for consistent selection
     end
 
-    % Ensure we get a cell array even if only one file is selected
+    % Ensure we get an array even if only one file is selected
     if ischar(in_files)
         in_files = {in_files};
     end
@@ -230,7 +230,7 @@ function [num_kept, num_total, num_stable, num_borderline, num_unstable] = proce
     % (2) Filter for unique configurations
     fprintf('[2/4] Isolating unique entries...    ');
     filtered_data = processData(data, pos_cols, torque_cols, pos_tolerance, target_pos_only);
-    
+
     num_kept = height(filtered_data);
     num_total = height(data);
 
@@ -289,9 +289,9 @@ end
     @brief Finds exact matching columns in the data table.
 
     @param data           Table containing the data to be processed
-    @param required_cols  Cell array of column names to find in the data table
+    @param required_cols  Array of column names to find in the data table
 
-    @return matched_cols  Cell array of column names that were found in the data
+    @return matched_cols  Array of column names that were found in the data
 %}
 function matched_cols = findMatchingColumns(data, required_cols)
     col_titles = data.Properties.VariableNames;
@@ -315,8 +315,8 @@ end
            averaging torque values for similar position configurations.
 
     @param data             Table containing the robot data
-    @param pos_cols         Cell array of column names for position values
-    @param torque_cols      Cell array of column names for torque values
+    @param pos_cols         Array of column names for position values
+    @param torque_cols      Array of column names for torque values
     @param pos_tolerance    Minimum difference between consecutive positions (in deg)
     @param target_pos_only  Whether non-operator-input logged positions should
                             be filtered (i.e., positions interpolated by the app)
@@ -363,7 +363,7 @@ end
            based on torque values compared to continuous and peak limits.
 
     @param data         Table containing the filtered robot data
-    @param torque_cols  Cell array of column names for torque values
+    @param torque_cols  Array of column names for torque values
     @param cont_lim     Continuous torque limit for all actuators (in Nm)
     @param peak_lim     Peak torque limit for all actuators (in Nm)
 
@@ -403,7 +403,7 @@ end
            and so on.
 
     @param data      Table containing robot configurations to be sorted
-    @param pos_cols  Cell array of column names for position values
+    @param pos_cols  Array of column names for position values
 
     @return data  Sorted table with configurations ordered by all position columns
 %}
@@ -444,7 +444,7 @@ end
     @param stable         Table of newly identified stable configurations
     @param borderline     Table of newly identified borderline configurations
     @param unstable       Table of newly identified unstable configurations
-    @param pos_cols       Cell array of column names for position values
+    @param pos_cols       Array of column names for position values
 
     @return stable      Updated table with duplicates removed
     @return borderline  Updated table with duplicates removed
@@ -582,7 +582,7 @@ end
 
     @param filepath     String specifying the path to the Excel file
     @param sheet_name   String specifying the name of the target sheet
-    @param torque_cols  Cell array of column names containing torque values
+    @param torque_cols  Array of column names containing torque values
     @param cont_lim     Continuous torque limit (in Nm)
     @param peak_lim     Peak torque limit (in Nm)
 %}

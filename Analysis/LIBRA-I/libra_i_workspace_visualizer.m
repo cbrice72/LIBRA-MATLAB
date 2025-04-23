@@ -16,6 +16,7 @@ close all;
 
 % Working files
 in_file = 'output/target_arm_configs.xlsx';
+%in_file = 'output/all_arm_configs.xlsx';
 
 % Physical properties
 link_len = [1.112, 0.989, 1.006, 0.938]; % m, 2DJNT -L1-> J1 -L2-> J2 -L3-> J3 -L4-> End
@@ -39,7 +40,7 @@ colors = statusToColor(valid_statuses);
 
 plotEndEffectorPositions(valid_positions, colors);
 plotBaseAndDirections();
-plotWorkspace(valid_positions, valid_statuses);
+plotWorkspaceAndStats(valid_positions, valid_statuses);
 
 
 %% FUNCTIONS
@@ -127,9 +128,9 @@ function plotEndEffectorPositions(positions, colors)
 
     % Add labels
     title('Robot Arm End Effector Positions');
-    xlabel('Z Position (m)');
+    xlabel('X Position (m)');
     ylabel('Y Position (m)');
-    zlabel('X Position (m)');
+    zlabel('Z Position (m)');
 
     grid on;
     axis equal;
@@ -139,7 +140,7 @@ function plotEndEffectorPositions(positions, colors)
     h1 = scatter3(NaN, NaN, NaN, 50, [0, 1, 0], 'filled'); % stable
     h2 = scatter3(NaN, NaN, NaN, 50, [1, 1, 0], 'filled'); % borderline
     h3 = scatter3(NaN, NaN, NaN, 50, [1, 0, 0], 'filled'); % unstable
-    L = legend([h1, h2, h3, h4], {'Stable', 'Borderline', 'Unstable'}, 'Location', 'best');
+    L = legend([h1, h2, h3], {'Stable', 'Borderline', 'Unstable'}, 'Location', 'east');
 
     % Nothing else should be added to the legend, so disable its updates
     L.AutoUpdate = 'off';
@@ -151,7 +152,7 @@ end
     @param positions  Matrix of valid end effector positions
     @param status     Array of torque stability status for each position
 %}
-function plotWorkspace(positions, status)
+function plotWorkspaceAndStats(positions, status)
     % Only consider stable (and, optionally, borderline stable) configurations
     stable_mask = strcmp(status, 'Stable (within limits)');
     %stable_mask = strcmp(torque_status, 'Stable (within limits)') | strcmp(torque_status(valid_idxs), 'Borderline (exceeds continuous limits)');
@@ -171,8 +172,8 @@ function plotWorkspace(positions, status)
 
     % Compute workspace statistics and "translate" into human-readable string
     volume = getConvHullVolume(combined, K);
-    info_str = sprintf([ ...
-        'Workspace Volume: %.3f m³\nX Reach: +%.3f / %.3f m\nY Reach: +%.3f / %.3f m\nZ Reach: +%.3f / %.3f m'], ...
+    info_str = sprintf( ...
+        'Workspace Volume: %.3f m³\nX Reach: +%.3f / %.3f m\nY Reach: +%.3f / %.3f m\nZ Reach: +%.3f / %.3f m', ...
         volume, max(combined(:, 1)), min(combined(:, 1)), ...
         max(combined(:, 2)), min(combined(:, 2)), ...
         max(combined(:, 3)), min(combined(:, 3)));
