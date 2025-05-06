@@ -36,8 +36,7 @@ Helper scripts related to the revolute joint on `LIBRA-II` (sometimes called `RE
 
 ### *Formatting*
 
-You can use the included M-script [MBeautifier](https://github.com/davidvarga/MBeautifier) to format your code.
-To add `format-code` as a MATLAB command to edit your active file, edit/create the following files in your MATLAB user path (if you're not sure where that is, type `userpath` into your Command window).
+You can use the included M-script [MBeautifier](https://github.com/davidvarga/MBeautifier) to format your code. To add `format-code` as a MATLAB command to edit your active file, edit/create the following files in your MATLAB user path (if you're not sure where that is, type `userpath` into your Command window).
 
 #### **startup.m**
 
