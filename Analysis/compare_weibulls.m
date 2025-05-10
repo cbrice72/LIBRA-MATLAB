@@ -15,19 +15,41 @@ clc; clear; close all;
 wbl3pdf = @(x,a,b,c) wblpdf(x-c,a,b);
 wbl3cdf = @(x,a,b,c) wblcdf(x-c,a,b);
 
+% Dataset selection
+%   Pick any of the following: lighting-experiment, rtabmap-rgbd
+dataset_str = "rtabmap-rgbd";
+
+if ~contains(dataset_str, ["lighting-experiment", "rtabmap-rgbd"])
+    error("Invalid dataset!")
+end
+
 % Parameters (a, b, shift)
-params = [
-    0.969855, 0.040749, 0.000118;  % Light-0
-    0.817631, 0.035734, 0.000209;  % Light-45
-    0.780416, 0.081520, 0.000291   % Light-90
-];
+if contains(dataset_str, "lighting-experiment", IgnoreCase=true)
+    params = [
+        0.969855, 0.040749, 0.000118;  % Light-0
+        0.817631, 0.035734, 0.000209;  % Light-45
+        0.780416, 0.081520, 0.000291   % Light-90
+    ];
+elseif contains(dataset_str, "rtabmap-rgbd", IgnoreCase=true)
+    params = [
+        0.972623, 0.040118, 0.000616;  % RTAB-Map using RealSense `infra1/2`
+        0., 0., 0.;  % SfM (hloc) using RealSense `color`
+    ];
+end
 
 % Values (x)
-filepaths = {
-    'C:\Users\brice\Desktop\Projects\LIBRA\Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-0\color\weibull-pdf.csv';
-    'C:\Users\brice\Desktop\Projects\LIBRA\Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-45\color\weibull-pdf.csv';
-    'C:\Users\brice\Desktop\Projects\LIBRA\Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-90\color\weibull-pdf.csv'
-};
+if contains(dataset_str, "lighting-experiment", IgnoreCase=true)
+    filepaths = {
+        'D:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-0\color\weibull-pdf.csv';
+        'D:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-45\color\weibull-pdf.csv';
+        'D:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-90\color\weibull-pdf.csv'
+    };
+elseif contains(dataset_str, "rtabmap-rgbd", IgnoreCase=true)
+    filepaths = {
+        'D:\LIBRA Archive\2025-04-25 LIBRA-I RTAB-Map (RealSense only)\maps\rgbd-only\weibull-pdf.csv';
+        'D:\...\weibull-pdf.csv'
+    };
+end
 
 %% BODY
 % Prepare plot
