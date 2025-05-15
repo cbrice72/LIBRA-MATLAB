@@ -40,14 +40,14 @@ end
 % Values (x)
 if contains(dataset_str, "lighting-experiment", IgnoreCase=true)
     filepaths = {
-        'D:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-0\color\weibull-pdf.csv';
-        'D:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-45\color\weibull-pdf.csv';
-        'D:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-90\color\weibull-pdf.csv'
+        'E:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-0\color\weibull-pdf.csv';
+        'E:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-45\color\weibull-pdf.csv';
+        'E:\LIBRA Archive\2024-10-01_RealSense-Indirect-Lighting-Experiment\light-90\color\weibull-pdf.csv'
     };
 elseif contains(dataset_str, "rtabmap-rgbd", IgnoreCase=true)
     filepaths = {
-        'D:\LIBRA Archive\2025-04-25 LIBRA-I RTAB-Map (RealSense only)\maps\rgbd-only\weibull-pdf_rtabmap.csv';
-        'D:\LIBRA Archive\2025-04-25 LIBRA-I RTAB-Map (RealSense only)\maps\rgbd-only\weibull-pdf_sfm.csv'
+        'E:\LIBRA Archive\2025-04-25 LIBRA-I RTAB-Map (RealSense only)\maps\rgbd-only\weibull-pdf_rtabmap.csv';
+        'E:\LIBRA Archive\2025-04-25 LIBRA-I RTAB-Map (RealSense only)\maps\rgbd-only\weibull-pdf_sfm.csv'
     };
 end
 
