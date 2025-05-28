@@ -66,6 +66,9 @@ nexttile
 [x_surf, y_surf, z_surf] = generateRevolutionSurface(x_hull(k_hull), y_hull(k_hull));
 plotWorkspaceAndStats(x_surf, y_surf, z_surf);
 
+% For poster, uncomment the following
+%set(findall(gcf,'-property','FontSize'),'FontSize',24)
+
 
 %% FUNCTIONS
 
@@ -86,14 +89,15 @@ function plotTrackAndHull(x, y, x_hull, y_hull, k_hull)
     grid on;
 
     title('LIBRA-II Arm Tip Track and 2D Workspace');
-    %legend('Original Track', 'Calculated Workspace', 'Minimum Reach (1.05 m)');
-    xlabel('Horizontal Position (m)');
-    ylabel('Vertical Position (m)');
+    xlabel('X Position (m)');
+    ylabel('Z Position (m)');
     axis equal;
 
     % Limit axes to within a small margin of the data, to avoid blank space
-    xlim([0, max(x) + 0.2]);
-    ylim([min(y) - 0.2, max(y) + 0.9]);
+    xlim([0, max(x)+0.2]);
+    xticks(0:1:max(x));
+    ylim([-2, 2]);
+    yticks(-2:1:2);
 
     % Plot minimum reach circle
     %   (NOTE: this is done after the axis limit since we don't care about most
@@ -104,7 +108,8 @@ function plotTrackAndHull(x, y, x_hull, y_hull, k_hull)
     y = min_length * sin(theta);
     plot(x, y, 'b', 'LineWidth', 1.5);
 
-    legend('Original Track', 'Calculated Workspace', 'Minimum Reach');
+    % For poster, comment the following
+    legend('Original Track', 'Calculated Workspace', 'Minimum Reach (1.05 m)');
 end
 
 %{
@@ -150,6 +155,10 @@ function plotWorkspaceAndStats(x_surf, y_surf, z_surf)
     grid on;
 
     view(-45, 30);
+
+    % Ensure same axes as 2D Workspace graph
+    zlim([-2, 2]);
+    zticks(-2:1:2);
 
     % Add LIBRA-II base w/ directional axes for reference
     hold on;
@@ -257,12 +266,18 @@ end
 %}
 function displayWorkspaceStats(area, vol, x_min, x_max, y_min, y_max, z_min, z_max)
     % "Translate" statistics into human-readable string
+    % - For poster, use second line with simpler printout
     info_str = sprintf( ...
         'Workspace Area (2D): %.3f m²\nWorkspace Volume: %.3f m³\nX Reach: +%.3f / %.3f m\nY Reach: +%.3f / %.3f m\nZ Reach: +%.3f / %.3f m', ...
         area, vol, x_max, x_min, y_max, y_min, z_max, z_min);
+    %info_str = sprintf( ...
+    %    'Workspace Area (2D): %.3f m²\nWorkspace Volume: %.3f m³', ...
+    %    area, vol);
 
     % Determine appropriate background color for annotation
+    % - For poster, use: ax_bg = 1 (we want "light mode")
     ax_bg = get(gca, 'Color');
+    %ax_bg = 1;
     if mean(ax_bg) < 0.5 % dark mode
         text_color = [1, 1, 1];
         box_color = [0.2, 0.2, 0.2];
@@ -274,6 +289,8 @@ function displayWorkspaceStats(area, vol, x_min, x_max, y_min, y_max, z_min, z_m
     end
 
     % Add annotation to right of plot
+    % - For web, use: [0.76, 0.85, 0.2, 0.1]
+    % - For poster, use: [0.75, 0.90, 0.2, 0.1]
     annotation('textbox', [0.76, 0.85, 0.2, 0.1], 'String', info_str, ...
         'FitBoxToText', 'on', 'BackgroundColor', box_color, ...
         'EdgeColor', edge_color, 'Color', text_color, 'FontSize', 10);
