@@ -16,10 +16,10 @@ wbl3pdf = @(x,a,b,c) wblpdf(x-c,a,b);
 wbl3cdf = @(x,a,b,c) wblcdf(x-c,a,b);
 
 % Dataset selection
-%   Pick any of the following: lighting-experiment, rtabmap-rgbd
-dataset_str = "rtabmap-rgbd";
+%   Pick any of the following: lighting-experiment, rtabmap-rgbd, practical
+dataset_str = "practical";
 
-if ~contains(dataset_str, ["lighting-experiment", "rtabmap-rgbd"])
+if ~contains(dataset_str, ["lighting-experiment", "rtabmap-rgbd", "practical"])
     error("Invalid dataset!")
 end
 
@@ -35,6 +35,11 @@ elseif contains(dataset_str, "rtabmap-rgbd", IgnoreCase=true)
         0.972623, 0.040118, 0.000616;  % RTAB-Map using RealSense `infra1/2`
         1.034524, 0.048516, 0.000309;  % SfM (hloc) using RealSense `color`
     ];
+elseif contains(dataset_str, "practical", IgnoreCase=true)
+    params = [
+        0.998795, 0.074929, 0.000129;  % Practical motion plan
+        0.972623, 0.040118, 0.000616;  % Ground truth
+    ];
 end
 
 % Values (x)
@@ -48,6 +53,11 @@ elseif contains(dataset_str, "rtabmap-rgbd", IgnoreCase=true)
     filepaths = {
         'E:\LIBRA Archive\2025-04-25 LIBRA-I RTAB-Map (RealSense only)\maps\rgbd-only\weibull-pdf_rtabmap.csv';
         'E:\LIBRA Archive\2025-04-25 LIBRA-I RTAB-Map (RealSense only)\maps\rgbd-only\weibull-pdf_sfm.csv'
+    };
+elseif contains(dataset_str, "practical", IgnoreCase=true)
+    filepaths = {
+        'E:\LIBRA Archive\2025-09-26 SLAM Data Collection 1\maps\weibull-pdf_practical.csv';
+        'E:\LIBRA Archive\2025-09-26 SLAM Data Collection 1\maps\weibull-pdf_rtabmap.csv';  % copied from 2025-04-25
     };
 end
 
@@ -135,6 +145,16 @@ elseif contains(dataset_str, "rtabmap-rgbd", IgnoreCase=true)
 
     % Labels for print summary
     data_labels = ["RTAB-Map", "SfM"];
+elseif contains(dataset_str, "practical", IgnoreCase=true)
+    % Add title
+    title({'Cloud-to-Cloud Distance Comparison', 'Practical Motion Plan vs. Ground Truth'});
+    
+    % Add legend
+    legend('"Practical"', 'Ground Truth', ...
+           'Location', 'best', 'FontSize', 10);
+
+    % Labels for print summary
+    data_labels = ["Practical", "Ground Truth"];
 end
 
 % Enhance grid
