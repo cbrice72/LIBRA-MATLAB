@@ -3,7 +3,7 @@ clc; clear; close all;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % @file   histogram_stats.m
 % @brief  Provides statistics on user-specified histogram data.
-%         Designed to work with CSV files exported from CloudCompute, with the
+%         Designed to work with CSV files exported from CloudCompare, with the
 %         following columns: "Class", "Value", "Class start", and "Class end".
 %
 % @author brice.c.aa
