@@ -5,20 +5,31 @@ function log_data = parse_old_libra_app_csv(filename)
         error('File %s does not exist.', filename);
     end
     
-    % Import table using default options
+    % Import table, explicitly reading time column as string (easier conversion)
     opts = detectImportOptions(filename);
     opts.VariableNamingRule = 'preserve';
     if any(strcmp(opts.VariableNames, 'Time'))
         opts = setvaropts(opts, 'Time', 'Type', 'string');
     end
     data = readtable(filename, opts);
+
+    % Filter out invalid rows, just in case
+    valid_rows = ~ismissing(data.Time) & (strtrim(string(data.Time)) ~= "");
+    data = data(valid_rows, :);
+    time_str = erase(strtrim(string(data.Time)), char(13));  % carriage return
     
     % Parse timestamps and normalize to start of log
-    time_str = erase(strtrim(data.Time), char(13));
-    t = datetime(time_str, 'InputFormat', 'mm:ss.S');
-    dt = diff(t);
-    dt(dt < 0) = dt(dt < 0) + hours(1);
-    time_sec = [0; cumsum(seconds(dt))];
+    if contains(time_str(1), '/')
+        % Full format
+        t = datetime(time_str, 'InputFormat', 'yyyy/MM/dd HH:mm:ss.SSS');
+        time_sec = seconds(t - t(1));
+    else
+        % Short format, with hour rollover correction
+        t = datetime(time_str, 'InputFormat', 'mm:ss.S');
+        dt = diff(t);
+        dt(dt < 0) = dt(dt < 0) + hours(1);
+        time_sec = [0; cumsum(seconds(dt))];
+    end
     
     vars = data.Properties.VariableNames;
     joints = {'Roll', 'Pitch', 'J1', 'J2', 'J3'};  % assume LIBRA-I joint order & names
