@@ -4,6 +4,18 @@ function summarize_log_targets()
     
     clear; clc;
 
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % @file   summarize_log_targets.m
+    % @brief  Parses one or more Goto-style LIBRA App log files (CSVs) and
+    %         creates a summary of unique user-commanded target poses. For each
+    %         pose, it calculates instantaenous average position error across
+    %         all joints and identifies which actuator is experiencing the
+    %         highest torque.
+    %
+    % @author brice.c.aa
+    % @date   2026/6/9
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
     % Global plot style variables
     global TARGET_FILE_NAME ...
            HORIZ_RULE_W TIME_COL_W POS_ERR_COL_W;
@@ -108,7 +120,7 @@ function summarize_log_targets()
             fprintf('%-*s | %s | %-*s | %s\n', ...
                     TIME_COL_W, 'Time (s)', ...            % timestamp
                     joint_headers, ...                     % joint names
-                    POS_ERR_COL_W, 'Avg Error (Var)', ...  % pos error + variance
+                    POS_ERR_COL_W, 'Avg Error (deg)', ...  % pos error + stddev
                     'Max Torque (Nm)');                    % largest torque + actuator
             fprintf('%s\n', repmat('-', 1, HORIZ_RULE_W));
             
@@ -191,11 +203,9 @@ function print_pose_metrics(log_data, i)
     global TIME_COL_W POS_ERR_COL_W;
 
     % Calculate average position error + variance
-    target_poss = log_data.target_pos(i, :);
-    position_errors = abs(target_poss - log_data.actual_pos(i, :));
-
-    avg_pos_err = mean(position_errors);
-    var_pos_err = var(position_errors);
+    position_errors = abs(log_data.pos_error(i, :));
+    pos_err_avg = mean(position_errors);
+    pos_err_stddev = std(position_errors);
     
     % Find max torque w/ corresponding actuator
     actual_torques = log_data.actual_trq(i, :);
@@ -212,8 +222,8 @@ function print_pose_metrics(log_data, i)
 
     % Print metrics
     time_str = sprintf('%02d:%04.1f', min_val, sec_val);
-    pose_str = sprintf('%7.1f ', target_poss);
-    err_str = sprintf('%5.1f (%-6.1f)', avg_pos_err, var_pos_err);
+    pose_str = sprintf('%7.1f ', log_data.target_pos(i, :));
+    err_str = sprintf('%5.1f \xB1%5.1f', pos_err_avg, pos_err_stddev);
     trq_str = sprintf('%6.1f (%-5s)', max_trq_val, max_trq_joint);
     
     fprintf('%-*s | %s | %-*s | %s\n', ...
