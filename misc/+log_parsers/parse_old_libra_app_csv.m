@@ -1,5 +1,8 @@
 function log_data = parse_old_libra_app_csv(filename)
     %% @brief Parses the older Goto-style LIBRA-I App CSV log file.
+    %         (these logs range from 2022/7/5 to 2025/4/17)
+    %
+    % @note Data is already in joint space (e.g., Roll & Pitch not MA & MB).
     
     if ~exist(filename, 'file')
         error('File %s does not exist.', filename);
@@ -62,6 +65,12 @@ function log_data = parse_old_libra_app_csv(filename)
         end
         actual_trq(:, i) = data{:, idx_pt(1)};
     end
+
+    % All CSV logs from Goto-san's app use a different joint space compared to
+    % the modern app, so we correct that here
+    target_pos(:, 5) = -target_pos(:, 5);
+    actual_pos(:, 5) = -actual_pos(:, 5);
+    actual_trq(:, 5) = -actual_trq(:, 5);
     
     % Populate return struct (should match that in other parse scripts)
     log_data = struct();

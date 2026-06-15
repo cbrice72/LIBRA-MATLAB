@@ -1,5 +1,9 @@
 function log_data = parse_rosbag2_dir(bag_directory)
-    %% @brief Parses a ROS2 rosbag2 log directory into a standard analysis structure.
+    %% @brief Parses a ROS2 `rosbag2` log directory into a standard analysis
+    %         structure.
+    %
+    % @note Data is already in joint space (e.g., Roll & Pitch not MA & MB)
+    %       with the correct signs, so no further conversion/correction necessary.
     
     if ~exist(bag_directory, 'dir')
         error('Rosbag2 directory %s does not exist.', bag_directory);
