@@ -23,8 +23,10 @@ function compare_joint_performance()
     % Global plot style variables
     global COLOR_BEFORE COLOR_AFTER SHOW_TITLES ...
            FONT_SIZE_TITLE FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR ...
-           BG_COLOR GRID_COLOR ...
-           BOX_SPACING BAR_WIDTH Y_LIMIT_PERCENTILE;
+           BG_COLOR GRID_COLOR LINE_WIDTH ...
+           BOX_SPACING Y_LIMIT_PERCENTILE ...
+           CDF_PERCENTILE SHOW_CDF_LABELS ...
+           BAR_WIDTH;
            
     COLOR_BEFORE       = [0.29, 0.29, 0.29];  % dark gray
     COLOR_AFTER        = [0.85, 0.37, 0.01];  % orange
@@ -38,10 +40,15 @@ function compare_joint_performance()
 
     BG_COLOR           = 'w';
     GRID_COLOR         = [0.75 0.75 0.75];  % light gray
+    LINE_WIDTH         = 2.8;
 
-    BOX_SPACING        = 1.0;
-    BAR_WIDTH          = 0.95;
-    Y_LIMIT_PERCENTILE = 98.0;
+    BOX_SPACING        = 1.0;  % boxplots: space between groups of boxes
+    Y_LIMIT_PERCENTILE = 98.0;  % boxplots: fallback limit for max graph height
+
+    CDF_PERCENTILE     = 90.0;  % cdfs: where to draw the horizontal limit
+    SHOW_CDF_LABELS    = true;  % cdfs: whether to show per-subgraph values
+
+    BAR_WIDTH          = 0.95;  % torque jitter: space between groups of boxes
 
     % Resolve pathing to shared utility scripts folder
     script_dir = fileparts(mfilename('fullpath'));
@@ -229,7 +236,7 @@ end
 function plot_absolute_error_boxplots(joints, before, after)
     global COLOR_BEFORE COLOR_AFTER SHOW_TITLES FONT_SIZE_TITLE FONT_SIZE_AXIS ...
            FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR ...
-           BOX_SPACING Y_LIMIT_PERCENTILE;
+           LINE_WIDTH BOX_SPACING Y_LIMIT_PERCENTILE;
 
     % Determine layout scaling from params
     num_joints = length(joints);
@@ -303,23 +310,26 @@ function plot_absolute_error_boxplots(joints, before, after)
            'Color', TEXT_COLOR);
     
     % Modify box colors to differentiate "before" and "after"
-    box_handles = findobj(gca, 'Tag', 'Box');
-
-    for k = 1:length(box_handles)
-        % Odd = "before", even = "after"
-        if mod(k, 2) == 1
-            set(box_handles(k), 'Color', COLOR_AFTER, 'LineWidth', 1.8);
-        else
-            set(box_handles(k), 'Color', COLOR_BEFORE, 'LineWidth', 1.8);
+    all_lines = findobj(gca, 'Type', 'Line');
+    set(all_lines, 'LineWidth', LINE_WIDTH);
+    
+    for k = 1:length(all_lines)
+        if ~strcmpi(get(all_lines(k), 'Tag'), 'Median')
+            % Odd = "before", even = "after"
+            if mod(k, 2) == 1
+                set(all_lines(k), 'Color', COLOR_AFTER);
+            else
+                set(all_lines(k), 'Color', COLOR_BEFORE);
+            end
         end
     end
     
     % Customize legend
     hold on;
-    h_b = plot(NaN, NaN, 'Color', COLOR_BEFORE, 'LineWidth', 2);
-    h_a = plot(NaN, NaN, 'Color', COLOR_AFTER, 'LineWidth', 2);
+    h_b = plot(NaN, NaN, 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH);
+    h_a = plot(NaN, NaN, 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH);
     legend([h_b, h_a], {'Before variable gains', 'After variable gains'}, ...
-           'Location', 'best', ...
+           'Location', 'north', ...
            'Color', BG_COLOR, ...
            'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
 end
@@ -335,7 +345,8 @@ end
 %}
 function plot_error_cdfs(joints, before, after)
     global COLOR_BEFORE COLOR_AFTER SHOW_TITLES FONT_SIZE_TITLE FONT_SIZE_AXIS ...
-           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR;
+           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR ...
+           LINE_WIDTH CDF_PERCENTILE SHOW_CDF_LABELS;
 
     % Determine layout scaling
     cols = 3;
@@ -348,21 +359,49 @@ function plot_error_cdfs(joints, before, after)
                         0.1]);
 
     for i = 1:length(joints)
+        % Draw subplot
         subplot(rows, cols, i);
 
         b_err = sort(abs(before.position_error(:, i)));
         b_err = b_err(~isnan(b_err));
         b_y = (1:length(b_err)) / length(b_err);
+        plot(b_err, b_y * 100, '--', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH);
+        
+        hold on;
 
         a_err = sort(abs(after.position_error(:, i)));
         a_err = a_err(~isnan(a_err));
         a_y = (1:length(a_err)) / length(a_err);
+        plot(a_err, a_y * 100, '-', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH);
+
+        % Draw horizontal limit + intersection
+        b_val = interp1(b_y * 100, b_err, CDF_PERCENTILE, 'linear', 'extrap');
+        plot([0, b_val], [CDF_PERCENTILE, CDF_PERCENTILE], ...  % horizontal
+             ':', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+        plot([b_val, b_val], [0, CDF_PERCENTILE], ...  % vertical
+             ':', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
         
-        plot(b_err, b_y * 100, '--', 'LineWidth', 1.8,...
-             'Color', COLOR_BEFORE);
-        hold on;
-        plot(a_err, a_y * 100, '-', 'LineWidth', 1.8, ...
-             'Color', COLOR_AFTER);
+        a_val = interp1(a_y * 100, a_err, CDF_PERCENTILE, 'linear', 'extrap');
+        plot([0, a_val], [CDF_PERCENTILE, CDF_PERCENTILE], ...
+             ':', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+        plot([a_val, a_val], [0, CDF_PERCENTILE], ...
+            ':', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+        
+        if SHOW_CDF_LABELS
+            rgb_before = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', COLOR_BEFORE);
+            rgb_after  = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', COLOR_AFTER);
+
+            label_str = { ...
+                sprintf('\\bf%d%% Threshold\\rm', round(CDF_PERCENTILE)), ...
+                sprintf('%sBefore: %.2f deg', rgb_before, b_val), ...
+                sprintf('%sAfter: %.2f deg', rgb_after, a_val) ...
+            };
+            text(global_max_x * 0.95, 22, label_str, ...
+                 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
+                 'BackgroundColor', [BG_COLOR, 0.85], 'EdgeColor', GRID_COLOR, ...
+                 'FontSize', FONT_SIZE_AXIS - 4, ...
+                 'Color', TEXT_COLOR);
+        end
 
         xlim([0, global_max_x]);
         ylim([0, 105]);  % slight headroom so lines are always visible
@@ -392,12 +431,12 @@ function plot_error_cdfs(joints, before, after)
 
     % NOTE: these invisible dummy lines match the style of the other plots,
     %       so there will be a legend in the empty space without an extra plot
-    h1 = plot(NaN, NaN, '--', 'LineWidth', 1.8, 'Color', COLOR_BEFORE);
+    h1 = plot(NaN, NaN, '--', 'LineWidth', LINE_WIDTH, 'Color', COLOR_BEFORE);
     hold on;
-    h2 = plot(NaN, NaN, '-', 'LineWidth', 1.8, 'Color', COLOR_AFTER);
+    h2 = plot(NaN, NaN, '-', 'LineWidth', LINE_WIDTH, 'Color', COLOR_AFTER);
 
     legend([h1, h2], {'Before variable gains', 'After variable gains'}, ...
-           'Location', 'northwest', ...
+           'Location', 'north', ...
            'Color', BG_COLOR, ...
            'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
 
@@ -419,7 +458,8 @@ end
 %}
 function plot_rmse_radar(joints, b_rmse, a_rmse)
     global COLOR_BEFORE COLOR_AFTER SHOW_TITLES FONT_SIZE_TITLE FONT_SIZE_AXIS ...
-           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR;
+           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR ...
+           LINE_WIDTH;
 
     % Project polar → Cartesian (X/Y)
     angular_offset = -pi/10;  % rotate graph so title and tick label(s) don't overlap
@@ -473,12 +513,12 @@ function plot_rmse_radar(joints, b_rmse, a_rmse)
                'DisplayName', 'Before variable gains', ...
                'FaceAlpha', 0.12, ...
                'EdgeColor', COLOR_BEFORE, ...
-               'LineWidth', 2);
+               'LineWidth', LINE_WIDTH);
     ha = patch(ax, ay, COLOR_AFTER, ...
                'DisplayName', 'After variable gains', ...
                'FaceAlpha', 0.12, ...
                'EdgeColor', COLOR_AFTER, ...
-               'LineWidth', 2);
+               'LineWidth', LINE_WIDTH);
 
     % 4) Plot values next to each peak
     value_offset = max_scale * 0.09; 
@@ -513,7 +553,7 @@ function plot_rmse_radar(joints, b_rmse, a_rmse)
     
     % Customize legend
     legend([hb, ha], {'Before variable gains', 'After variable gains'}, ...
-           'Location', 'northeast', ...
+           'Location', 'east', ...
            'Color', BG_COLOR, ...
            'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
 end
