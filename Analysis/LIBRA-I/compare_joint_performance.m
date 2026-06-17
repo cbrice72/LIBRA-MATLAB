@@ -309,9 +309,9 @@ function plot_absolute_error_boxplots(joints, before, after)
            'FontSize', FONT_SIZE_AXIS, 'FontWeight', TITLE_WEIGHT, ...
            'Color', TEXT_COLOR);
     
-    % Modify box colors to differentiate "before" and "after"
+    % Modify line colors to differentiate "before" and "after"
     all_lines = findobj(gca, 'Type', 'Line');
-    set(all_lines, 'LineWidth', LINE_WIDTH);
+    set(all_lines, 'LineWidth', LINE_WIDTH);  % normalize line width
     
     for k = 1:length(all_lines)
         if ~strcmpi(get(all_lines(k), 'Tag'), 'Median')
