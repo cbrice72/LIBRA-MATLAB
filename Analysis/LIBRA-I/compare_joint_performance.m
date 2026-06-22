@@ -60,7 +60,8 @@ function compare_joint_performance()
 
     %% SETUP
 
-    joints = {'Roll', 'Pitch', 'J1', 'J2', 'J3'};
+    %joints = {'Roll', 'Pitch', 'J1', 'J2', 'J3'};  % for everyday use/reference
+    joints = {'J1', 'J2', 'J3', 'J4', 'J5'};  % for papers
     
     % NOTE: Paths can be absolute or relative to this script
     before_dirs = { ...
@@ -77,7 +78,7 @@ function compare_joint_performance()
         'E:\LIBRA Archive\2025-08-29 SLAM Attempt 4 (odom failure)\log' ...
     };
 
-    after_dirs = { ...
+    after_dirs = { ...  # NOTE: "Slam Data Collection 1" does not have target data
         'E:\LIBRA Archive\2026-06-08 SLAM Data Collection 2\log' ...
     };
 
