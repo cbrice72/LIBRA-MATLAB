@@ -4,7 +4,7 @@ function compare_joint_performance()
     %         comparing pre- and post-variable-gains implementation, so there
     %         are two separate data structures.
 
-    close all;
+    close all; clc;
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % @file   compare_joint_performance.m
@@ -21,16 +21,18 @@ function compare_joint_performance()
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     % Global plot style variables
-    global COLOR_BEFORE COLOR_AFTER SHOW_TITLES ...
+    global MAKE_FIGURES SHOW_TITLES PNG_RESOLUTION COLOR_BEFORE COLOR_AFTER ...
            FONT_SIZE_TITLE FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR ...
            BG_COLOR GRID_COLOR LINE_WIDTH ...
            BOX_SPACING Y_LIMIT_PERCENTILE ...
            CDF_PERCENTILE SHOW_CDF_LABELS ...
            BAR_WIDTH;
            
+    MAKE_FIGURES       = true;
+    SHOW_TITLES        = true;
+    PNG_RESOLUTION     = 300;  % px
     COLOR_BEFORE       = [0.29, 0.29, 0.29];  % dark gray
     COLOR_AFTER        = [0.85, 0.37, 0.01];  % orange
-    SHOW_TITLES        = true;
 
     FONT_SIZE_TITLE    = 22;
     FONT_SIZE_AXIS     = 18;
@@ -50,6 +52,12 @@ function compare_joint_performance()
 
     BAR_WIDTH          = 0.95;  % torque jitter: space between groups of boxes
 
+    % Global convenience variables
+    global DEG_SYM PADDING;
+
+    DEG_SYM = char(176);  % cross-platform degree symbol
+    PADDING = '   ';  % 3 blank spaces between columns
+
     % Resolve pathing to shared utility scripts folder
     script_dir = fileparts(mfilename('fullpath'));
     misc_path = fullfile(script_dir, '..', '..', 'misc');  % helper scripts
@@ -60,10 +68,10 @@ function compare_joint_performance()
 
     %% SETUP
 
-    %joints = {'Roll', 'Pitch', 'J1', 'J2', 'J3'};  % for everyday use/reference
-    joints = {'J1', 'J2', 'J3', 'J4', 'J5'};  % for papers
+    joints = {'J1', 'J2', 'J3', 'J4', 'J5'};  % mechanical convention
     
-    % NOTE: Paths can be absolute or relative to this script
+    % List all the directories we will search for log files in
+    % (NOTE: Paths can be absolute or relative to this script)
     before_dirs = { ...
         'E:\LIBRA Archive\2022-07 Goto-san Experimental Log Data',  ...
         'E:\LIBRA Archive\2023-11-13 Full Motion Test (bladder failure)\log',  ...
@@ -78,15 +86,34 @@ function compare_joint_performance()
         'E:\LIBRA Archive\2025-08-29 SLAM Attempt 4 (odom failure)\log' ...
     };
 
-    after_dirs = { ...  # NOTE: "Slam Data Collection 1" does not have target data
+    after_dirs = { ...  % NOTE: "Slam Data Collection 1" does not have target data
         'E:\LIBRA Archive\2026-06-08 SLAM Data Collection 2\log' ...
     };
+
+    % Ensure the output directory exists
+    output_dir = fullfile(script_dir, 'output');
+    if ~exist(output_dir, 'dir')
+        mkdir(output_dir);
+    end
+
+    % Prepare output log filepaths and clear previous logs, if any
+    log_basename = 'joint_performance';
+
+    details_file = fullfile(output_dir, [log_basename, '_details.txt']);
+    if exist(details_file, 'file')
+        delete(details_file);
+    end
+
+    summary_file = fullfile(output_dir, [log_basename, '_summary.txt']);
+    if exist(summary_file, 'file')
+        delete(summary_file);
+    end
 
     %% BODY
 
     % Initialize master data structs
-    before = struct('position_error', [], 'torque_jitter', [], 'rmse', []);
-    after  = struct('position_error', [], 'torque_jitter', [], 'rmse', []);
+    before = struct('position_error', [], 'torque_jitter', []);
+    after  = struct('position_error', [], 'torque_jitter', []);
 
     % Process log files
     [before, before_count] = process_dirs(before_dirs, script_dir, before);
@@ -99,52 +126,66 @@ function compare_joint_performance()
         error('Data aggregation failed; verify directory paths and file naming conventions');
     end
 
-    % Calculate global metrics (basically same data as the plots)
-    b_mae = mean(abs(before.position_error), 1, 'omitnan');
-    a_mae = mean(abs(after.position_error), 1, 'omitnan');
+    % Plot analyses & retrieve calculated metrics
+    fprintf('Generating visualizations and printing detailed metrics...\n');
 
-    b_rmse_avg = sqrt(mean(before.position_error.^2, 1, 'omitnan'));
-    a_rmse_avg = sqrt(mean(after.position_error.^2, 1, 'omitnan'));
+    diary(details_file);
 
-    b_jitter_avg = sqrt(mean(before.torque_jitter.^2, 1, 'omitnan'));
-    a_jitter_avg = sqrt(mean(after.torque_jitter.^2, 1, 'omitnan'));
+    box_stats            = plot_absolute_error_boxplots(joints, before, after);
+    cdf_stats            = plot_error_cdfs(joints, before, after);
+    [b_rmse, a_rmse]     = plot_rmse_radar(joints, before, after);
+    [b_jitter, a_jitter] = plot_torque_jitter(joints, before, after);
 
-    % Plot analyses
-    fprintf('Generating visualizations...\n');
+    diary off;  % [log_basename]_details.txt
 
-    plot_absolute_error_boxplots(joints, before, after);
-    plot_error_cdfs(joints, before, after);
-    plot_rmse_radar(joints, b_rmse_avg, a_rmse_avg);
-    plot_torque_jitter(joints, b_jitter_avg, a_jitter_avg);
+    % Print summary
+    fprintf('\nPrinting summary...\n');
 
-    % Print command-line summary
-    fprintf('Printing summary...\n');
+    diary(summary_file);
 
-    fprintf('\n====================================================================\n');
-    fprintf('                     JOINT PERFORMANCE SUMMARY\n');
-    fprintf('====================================================================\n');
-    fprintf('%-12s %-15s %-15s\n', 'Dataset', 'Total Files', 'Total Samples');
-    fprintf('--------------------------------------------------------------------\n');
-    fprintf('%-12s %-15d %-15d\n', 'Before', before_count, size(before.position_error, 1));
-    fprintf('%-12s %-15d %-15d\n', 'After', after_count, size(after.position_error, 1));
-    fprintf('--------------------------------------------------------------------\n\n');
+    w_sum = 49;  % total width of summary line
+    print_section_banner('JOINT PERFORMANCE SUMMARY', w_sum);
+    
+    h1 = 'Dataset';
+    h2 = 'Total Files';
+    h3 = 'Total Samples';
+    print_summary_row(h1, length(h1), h2, length(h2), h3, length(h3), w_sum);
+    print_rule('-', w_sum);
+    print_summary_row('Before', length(h1), ...
+                      num2str(before_count), length(h2), ...
+                      num2str(size(before.position_error, 1)), length(h3), ...
+                      w_sum);
+    print_summary_row('After', length(h1), ...
+                      num2str(after_count), length(h2), ...
+                      num2str(size(after.position_error, 1)), length(h3), ...
+                      w_sum);
+    print_rule('-', w_sum);
 
-    deg_sym = char(176);  % cross-platform degree symbol
+    fprintf('\n');
 
-    fprintf('                         (before)      (after)\n');
+    fprintf('%28s%17s\n', '(before)', '(after)');
     for i = 1:length(joints)
         fprintf('Joint: %s\n', joints{i});
-        fprintf('  - Mean Abs Pos Error: %6.3f%s    => %6.3f%s\n', b_mae(i), deg_sym, a_mae(i), deg_sym);
-        fprintf('  - Pos Tracking RMSE:  %6.3f%s    => %6.3f%s\n', b_rmse_avg(i), deg_sym, a_rmse_avg(i), deg_sym);
-        fprintf('  - Torque Jitter RMS:  %5.2f Nm/s => %5.2f Nm/s\n', b_jitter_avg(i), a_jitter_avg(i));
+        
+        fprintf('  %-19s%6.2f%-5s  =>  %6.2f%s\n', 'Mean Abs Pos Err:', ...
+            box_stats.b_mae(i), DEG_SYM, box_stats.a_mae(i), DEG_SYM);
+        fprintf('  %-19s%6.2f%-5s  =>  %6.2f%s\n', sprintf('%2.0f%% Err Threshold:', CDF_PERCENTILE), ...
+            cdf_stats.b_thresh(i), DEG_SYM, cdf_stats.a_thresh(i), DEG_SYM);
+        fprintf('  %-19s%6.2f%-5s  =>  %6.2f%s\n', 'Pos Track RMSE:', ...
+            b_rmse(i), DEG_SYM, a_rmse(i), DEG_SYM);
+        fprintf('  %-19s%6.2f%-5s  =>  %6.2f%s\n', 'Torque Jit RMS:', ...
+            b_jitter(i), ' Nm/s', a_jitter(i), ' Nm/s');
+        
         fprintf('\n');
     end
-    fprintf('====================================================================\n');
+    print_rule('=', w_sum);
 
-    fprintf('Done!\n');
+    diary off;  % [log_basename]_summary.txt
+
+    fprintf('\nDone!\n');
 end
 
-%% FUNCTIONS
+%% FUNCTIONS (PROCESSING)
 
 %{
     @brief Batch processes data files across listed log directories.
@@ -225,22 +266,54 @@ function [data_struct, file_count] = update_struct(data_struct, data, file_count
     file_count = file_count + 1;
 end
 
+%% FUNCTIONS (PLOTTING)
+
 %{
     @brief Generates a graph comparing "Before" and "After" data using simple
            side-by-side boxplots.
 
+    @param joints  Joint name labels
     @param before  "Before" data struct
     @param after   "After" data struct
 
-    @return (none)
+    @return box_stats  Struct w/ Mean Absolute Error (before, after) for each joint
 %}
-function plot_absolute_error_boxplots(joints, before, after)
-    global COLOR_BEFORE COLOR_AFTER SHOW_TITLES FONT_SIZE_TITLE FONT_SIZE_AXIS ...
-           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR ...
-           LINE_WIDTH BOX_SPACING Y_LIMIT_PERCENTILE;
+function box_stats = plot_absolute_error_boxplots(joints, before, after)
+    global MAKE_FIGURES SHOW_TITLES COLOR_BEFORE COLOR_AFTER FONT_SIZE_TITLE ...
+           FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR ...
+           GRID_COLOR LINE_WIDTH BOX_SPACING Y_LIMIT_PERCENTILE DEG_SYM;
+
+    num_joints = length(joints);
+
+    % Print detailed metrics
+    % (NOTE: since we can't get it directly from `boxplot()`, we calculate it)
+    b_err = abs(before.position_error);
+    a_err = abs(after.position_error);
+    
+    b_stats = calc_box_metrics(b_err);
+    a_stats = calc_box_metrics(a_err);
+
+    box_stats.b_mae = mean(b_err, 1, 'omitnan');
+    box_stats.a_mae = mean(a_err, 1, 'omitnan');
+
+    print_metrics_table_header(1, 'ABSOLUTE POSITION ERROR DISTRIBUTION', -9, DEG_SYM);
+    for i = 1:num_joints
+        fprintf('%-9s\n', joints{i});
+        print_metric_row('- Median', b_stats.med(i), a_stats.med(i), DEG_SYM, -9);
+        print_metric_row('- IQR', b_stats.iqr(i), a_stats.iqr(i), DEG_SYM, -9);
+        print_metric_row('- Q1', b_stats.q1(i), a_stats.q1(i), DEG_SYM, -9);
+        print_metric_row('- Q3', b_stats.q3(i), a_stats.q3(i), DEG_SYM, -9);
+        print_metric_row('- U-Bound', b_stats.ub(i), a_stats.ub(i), DEG_SYM, -9);
+    end
+    [w_total, ~, ~] = get_table_format(-9, DEG_SYM);
+    print_rule('-', w_total);
+
+    % Everything after this is figure/plot related, so exit early if not needed
+    if ~MAKE_FIGURES
+        return;
+    end
 
     % Determine layout scaling from params
-    num_joints = length(joints);
     joint_group_positions = 1:BOX_SPACING:(1 + BOX_SPACING * (num_joints - 1));
     box_positions = zeros(1, 2 * num_joints);
     
@@ -272,7 +345,7 @@ function plot_absolute_error_boxplots(joints, before, after)
     end
     
     % Draw plot
-    figure('Name', 'Absolute Position Error', 'Color', BG_COLOR);
+    fig = figure('Name', 'Absolute Position Error', 'Color', BG_COLOR);
     boxplot(all_data, all_groups, ...
             'Positions', box_positions, 'Symbol', '');
     
@@ -333,138 +406,256 @@ function plot_absolute_error_boxplots(joints, before, after)
            'Location', 'north', ...
            'Color', BG_COLOR, ...
            'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+
+    % Save plot as both a MATLAB figure (.fig) and regular image (.png)
+    save_figure(fig, '1_absolute-pos-error');
 end
 
 %{
     @brief Generates a graph comparing "Before" and "After" data using
            joint-by-joint cumulative distribution functions (CDFs).
 
+    @param joints  Joint name labels
     @param before  "Before" data struct
     @param after   "After" data struct
 
-    @return (none)
+    @return cdf_stats  Struct w/ values at the globally-set percentile threshold
+                       `CDF_PERCENTILE` (before, after) for each joint
 %}
-function plot_error_cdfs(joints, before, after)
-    global COLOR_BEFORE COLOR_AFTER SHOW_TITLES FONT_SIZE_TITLE FONT_SIZE_AXIS ...
-           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR ...
-           LINE_WIDTH CDF_PERCENTILE SHOW_CDF_LABELS;
+function cdf_stats = plot_error_cdfs(joints, before, after)
+    global MAKE_FIGURES CDF_PERCENTILE DEG_SYM;
 
-    % Determine layout scaling
-    cols = 3;
-    rows = ceil(length(joints) / cols);
+    num_joints = length(joints);
 
-    % Draw plot
-    figure('Name', 'Tracking Error CDFs', 'Color', BG_COLOR);
+    % Precompute per-joint CDFs
+    b_errs = cell(1, num_joints);
+    a_errs = cell(1, num_joints);
+    b_ys   = cell(1, num_joints);
+    a_ys   = cell(1, num_joints);
+    b_vals = zeros(1, num_joints);
+    a_vals = zeros(1, num_joints);
+
+    for i = 1:num_joints
+        b_err_i = sort(abs(before.position_error(:, i)));
+        b_errs{i} = b_err_i(~isnan(b_err_i));
+        b_ys{i}   = (1:length(b_errs{i})) / length(b_errs{i});
+
+        a_err_i = sort(abs(after.position_error(:, i)));
+        a_errs{i} = a_err_i(~isnan(a_err_i));
+        a_ys{i}   = (1:length(a_errs{i})) / length(a_errs{i});
+
+        b_vals(i) = interp1(b_ys{i} * 100, b_errs{i}, CDF_PERCENTILE, 'linear', 'extrap');
+        a_vals(i) = interp1(a_ys{i} * 100, a_errs{i}, CDF_PERCENTILE, 'linear', 'extrap');
+    end
+
+    cdf_stats.b_thresh = b_vals;
+    cdf_stats.a_thresh = a_vals;
+
+    % Print detailed metrics
+    print_metrics_table_header(2, 'ABSOLUTE ERROR CDF THRESHOLDS', 5, DEG_SYM);
+    for i = 1:num_joints
+        print_metric_row(joints{i}, b_vals(i), a_vals(i), DEG_SYM, 5);
+    end
+    [w_total, ~, ~] = get_table_format(5, DEG_SYM);
+    print_rule('-', w_total);
+
+    % Everything after this is figure/plot related, so exit early if not needed
+    if ~MAKE_FIGURES
+        return;
+    end
+
+    % Draw & save the combined 2-row grid (also saves individual plots)
     global_max_x = max([prctile(abs(before.position_error(:)), 98), ...
                         prctile(abs(after.position_error(:)), 98), ...
                         0.1]);
 
-    for i = 1:length(joints)
-        % Draw subplot
-        subplot(rows, cols, i);
+    draw_cdf_layout(joints, b_errs, a_errs, b_ys, a_ys, b_vals, a_vals, ...
+                    global_max_x, 2, ceil(num_joints / 2));
+end
 
-        b_err = sort(abs(before.position_error(:, i)));
-        b_err = b_err(~isnan(b_err));
-        b_y = (1:length(b_err)) / length(b_err);
-        plot(b_err, b_y * 100, '--', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH);
-        
-        hold on;
+%{
+    @brief Draws a joint's tracking-error CDF onto the current axes.
 
-        a_err = sort(abs(after.position_error(:, i)));
-        a_err = a_err(~isnan(a_err));
-        a_y = (1:length(a_err)) / length(a_err);
-        plot(a_err, a_y * 100, '-', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH);
+    @param joint_name    Joint name label (for axes title)
+    @param b_err         "Before" absolute errors, sorted ascending
+    @param a_err         "After" absolute errors, sorted ascending
+    @param b_y           "Before" eCDF (fraction, 0-1) matching b_err
+    @param a_y           "After" eCDF (fraction, 0-1) matching a_err
+    @param b_val         "Before" error threshold (at CDF_PERCENTILE)
+    @param a_val         "After" error threshold (at CDF_PERCENTILE)
+    @param global_max_x  Shared x-axis limit across all joints
 
-        % Draw horizontal limit + intersection
-        b_val = interp1(b_y * 100, b_err, CDF_PERCENTILE, 'linear', 'extrap');
-        plot([0, b_val], [CDF_PERCENTILE, CDF_PERCENTILE], ...  % horizontal
-             ':', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
-        plot([b_val, b_val], [0, CDF_PERCENTILE], ...  % vertical
-             ':', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
-        
-        a_val = interp1(a_y * 100, a_err, CDF_PERCENTILE, 'linear', 'extrap');
-        plot([0, a_val], [CDF_PERCENTILE, CDF_PERCENTILE], ...
-             ':', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
-        plot([a_val, a_val], [0, CDF_PERCENTILE], ...
-            ':', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
-        
-        if SHOW_CDF_LABELS
-            rgb_before = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', COLOR_BEFORE);
-            rgb_after  = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', COLOR_AFTER);
+    @return (none)
+%}
+function plot_single_cdf_axes(joint_name, b_err, a_err, b_y, a_y, b_val, a_val, global_max_x)
+    global COLOR_BEFORE COLOR_AFTER FONT_SIZE_TITLE FONT_SIZE_AXIS ...
+           TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR LINE_WIDTH ...
+           CDF_PERCENTILE SHOW_CDF_LABELS;
 
-            label_str = { ...
-                sprintf('\\bf%d%% Threshold\\rm', round(CDF_PERCENTILE)), ...
-                sprintf('%sBefore: %.2f deg', rgb_before, b_val), ...
-                sprintf('%sAfter: %.2f deg', rgb_after, a_val) ...
-            };
-            text(global_max_x * 0.95, 22, label_str, ...
-                 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
-                 'BackgroundColor', [BG_COLOR, 0.85], 'EdgeColor', GRID_COLOR, ...
-                 'FontSize', FONT_SIZE_AXIS - 4, ...
-                 'Color', TEXT_COLOR);
-        end
+    plot(b_err, b_y * 100, '--', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH);
+    hold on;
+    plot(a_err, a_y * 100, '-', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH);
 
-        xlim([0, global_max_x]);
-        ylim([0, 105]);  % slight headroom so lines are always visible
+    % Draw horizontal limit + intersection
+    plot([0, b_val], [CDF_PERCENTILE, CDF_PERCENTILE], ...
+         ':', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+    plot([b_val, b_val], [0, CDF_PERCENTILE], ...
+         ':', 'Color', COLOR_BEFORE, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+    plot([0, a_val], [CDF_PERCENTILE, CDF_PERCENTILE], ...
+         ':', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+    plot([a_val, a_val], [0, CDF_PERCENTILE], ...
+         ':', 'Color', COLOR_AFTER, 'LineWidth', LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
 
-        % Set properties
-        grid on;
+    if SHOW_CDF_LABELS
+        rgb_before = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', COLOR_BEFORE);
+        rgb_after  = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', COLOR_AFTER);
 
-        set(gca, 'Color', BG_COLOR, 'GridColor', GRID_COLOR, ...
-                 'FontSize', FONT_SIZE_AXIS - 1, ...
-                 'XColor', TEXT_COLOR, 'YColor', TEXT_COLOR);
-        
-        if SHOW_TITLES
-            title(sprintf('%s', joints{i}), ...
-                  'FontSize', FONT_SIZE_TITLE, 'FontWeight', TITLE_WEIGHT, ...
-                  'Color', TEXT_COLOR);
-        end
-        xlabel('Absolute Error (deg)', ...
-               'FontSize', FONT_SIZE_AXIS, ...
-               'Color', TEXT_COLOR);
-        ylabel('Probability (%)', ...
-               'FontSize', FONT_SIZE_AXIS, ...
-               'Color', TEXT_COLOR);
+        label_str = { ...
+            sprintf('\\bf%d%% Threshold\\rm', round(CDF_PERCENTILE)), ...
+            sprintf('%sBefore: %.2f deg', rgb_before, b_val), ...
+            sprintf('%sAfter: %.2f deg', rgb_after, a_val) ...
+        };
+        text(global_max_x * 0.95, 22, label_str, ...
+             'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
+             'BackgroundColor', [BG_COLOR, 0.85], 'EdgeColor', GRID_COLOR, ...
+             'FontSize', FONT_SIZE_AXIS - 4, ...
+             'Color', TEXT_COLOR);
     end
 
-    % Customize legend (in next empty subplot)
-    subplot(rows, cols, length(joints) + 1);
+    xlim([0, global_max_x]);
+    ylim([0, 105]);  % slight headroom so lines are always visible
 
-    % NOTE: these invisible dummy lines match the style of the other plots,
-    %       so there will be a legend in the empty space without an extra plot
-    h1 = plot(NaN, NaN, '--', 'LineWidth', LINE_WIDTH, 'Color', COLOR_BEFORE);
-    hold on;
-    h2 = plot(NaN, NaN, '-', 'LineWidth', LINE_WIDTH, 'Color', COLOR_AFTER);
+    % Set properties
+    grid on;
+    set(gca, 'Color', BG_COLOR, 'GridColor', GRID_COLOR, ...
+             'FontSize', FONT_SIZE_AXIS - 1, ...
+             'XColor', TEXT_COLOR, 'YColor', TEXT_COLOR);
 
-    legend([h1, h2], {'Before variable gains', 'After variable gains'}, ...
-           'Location', 'north', ...
-           'Color', BG_COLOR, ...
-           'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+    % NOTE: the per-joint title always displays, regardless of SHOW_TITLES,
+    %       since it's the only thing identifying which joint this plot shows
+    title(sprintf('%s', joint_name), ...
+          'FontSize', FONT_SIZE_TITLE, 'FontWeight', TITLE_WEIGHT, ...
+          'Color', TEXT_COLOR);
+    xlabel('Absolute Error (deg)', ...
+           'FontSize', FONT_SIZE_AXIS, ...
+           'Color', TEXT_COLOR);
+    ylabel('Probability (%)', ...
+           'FontSize', FONT_SIZE_AXIS, ...
+           'Color', TEXT_COLOR);
+end
 
-    axis off;
+%{
+    @brief Draws and saves the combined subplot-grid layout of the joint
+           tracking error CDFs, from precomputed per-joint data.
+
+    @param joints        Joint name labels
+    @param b_errs        Per-joint "Before" absolute errors, sorted ascending
+    @param a_errs        Per-joint "After" absolute errors, sorted ascending
+    @param b_ys          Per-joint "Before" eCDFs (fraction, 0-1) matching b_err
+    @param a_ys          Per-joint "After" eCDFs (fraction, 0-1) matching a_err
+    @param b_vals        Per-joint "Before" error thresholds (at CDF_PERCENTILE)
+    @param a_vals        Per-joint "After" error thresholds (at CDF_PERCENTILE)
+    @param global_max_x  Shared x-axis limit across all subplots
+    @param rows          Number of subplot grid rows
+    @param cols          Number of subplot grid columns
+
+    @return (none)
+%}
+function draw_cdf_layout(joints, b_errs, a_errs, b_ys, a_ys, b_vals, a_vals, ...
+                         global_max_x, rows, cols)
+    global SHOW_TITLES COLOR_BEFORE COLOR_AFTER FONT_SIZE_TITLE ...
+           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR ...
+           LINE_WIDTH;
+
+    num_joints = length(joints);
+
+    % Create figure
+    fig = figure('Name', 'Tracking Error CDFs', ...
+                 'Color', BG_COLOR);
+
+    for i = 1:num_joints
+        ax = subplot(rows, cols, i);
+        plot_single_cdf_axes(joints{i}, b_errs{i}, a_errs{i}, b_ys{i}, a_ys{i}, ...
+                              b_vals(i), a_vals(i), global_max_x);
+        
+        % Save subfigure individually right after creation
+        save_figure(ax, sprintf('2_joint-tracking-error-cdf_%s', joints{i}));
+    end
+
+    % Customize legend
+    if rows * cols > num_joints
+        % Put legend in empty grid cell
+        subplot(rows, cols, num_joints + 1);
+
+        % NOTE: these invisible dummy lines match the style of the other plots,
+        %       so we get a legend in the empty space without an extra plot
+        h1 = plot(NaN, NaN, '--', 'LineWidth', LINE_WIDTH, 'Color', COLOR_BEFORE);
+        hold on;
+        h2 = plot(NaN, NaN, '-', 'LineWidth', LINE_WIDTH, 'Color', COLOR_AFTER);
+
+        legend([h1, h2], {'Before variable gains', 'After variable gains'}, ...
+               'Location', 'north', ...
+               'Color', BG_COLOR, ...
+               'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+
+        axis off;
+    else
+        % No empty cell available; overlay legend on the last subplot
+        h1 = plot(NaN, NaN, '--', 'LineWidth', LINE_WIDTH, 'Color', COLOR_BEFORE);
+        h2 = plot(NaN, NaN, '-', 'LineWidth', LINE_WIDTH, 'Color', COLOR_AFTER);
+        legend([h1, h2], {'Before variable gains', 'After variable gains'}, ...
+               'Location', 'northeast', ...
+               'Color', BG_COLOR, ...
+               'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+    end
 
     % Overall plot title
-    sgtitle('Absolute Joint Tracking Error CDFs', ...
-            'FontSize', FONT_SIZE_TITLE, 'FontWeight', TITLE_WEIGHT, 'Color', TEXT_COLOR);
+    if SHOW_TITLES
+        sgtitle('Absolute Joint Tracking Error CDFs', ...
+                'FontSize', FONT_SIZE_TITLE, 'FontWeight', TITLE_WEIGHT, 'Color', TEXT_COLOR);
+    end
+
+    % Save plot as both a MATLAB figure (.fig) and regular image (.png)
+    save_figure(fig, '2_joint-tracking-error-cdfs');
 end
 
 %{
     @brief Generates a 2D Cartesian radar chart comparing "Before" and "After"
            data using joint tracking RMSE profiles.
 
-    @param b_rmse  "Before" position error data (already RMSE-ed)
-    @param a_rmse  "After" position error data (already RMSE-ed)
+    @param joints  Joint name labels
+    @param before  "Before" data struct
+    @param after   "After" data struct
 
-    @return (none)
+    @return b_rmse  "Before" position tracking RMSE per joint
+    @return a_rmse  "After" position tracking RMSE per joint
 %}
-function plot_rmse_radar(joints, b_rmse, a_rmse)
-    global COLOR_BEFORE COLOR_AFTER SHOW_TITLES FONT_SIZE_TITLE FONT_SIZE_AXIS ...
-           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR ...
-           LINE_WIDTH;
+function [b_rmse, a_rmse] = plot_rmse_radar(joints, before, after)
+    global MAKE_FIGURES SHOW_TITLES COLOR_BEFORE COLOR_AFTER FONT_SIZE_TITLE ...
+           FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR ...
+           GRID_COLOR LINE_WIDTH DEG_SYM;
+
+    num_joints = length(joints);
+
+    % Print detailed metrics
+    b_rmse = calc_rms(before.position_error);
+    a_rmse = calc_rms(after.position_error);
+
+    print_metrics_table_header(3, 'JOINT TRACKING RMSE PROFILE', 5, DEG_SYM);
+    for i = 1:num_joints
+        print_metric_row(joints{i}, b_rmse(i), a_rmse(i), DEG_SYM, 5);
+    end
+    [w_total, ~, ~] = get_table_format(5, DEG_SYM);
+    print_rule('-', w_total);
+
+    % Everything after this is figure/plot related, so exit early if not needed
+    if ~MAKE_FIGURES
+        return;
+    end
 
     % Project polar → Cartesian (X/Y)
     angular_offset = -pi/10;  % rotate graph so title and tick label(s) don't overlap
-    angles = linspace(0, 2 * pi, length(joints) + 1) + angular_offset;
+    angles = linspace(0, 2 * pi, num_joints + 1) + angular_offset;
 
     bx = [b_rmse, b_rmse(1)] .* cos(angles);
     by = [b_rmse, b_rmse(1)] .* sin(angles);
@@ -472,7 +663,7 @@ function plot_rmse_radar(joints, b_rmse, a_rmse)
     ay = [a_rmse, a_rmse(1)] .* sin(angles);
     
     % Draw plot
-    figure('Name', 'Tracking RMSE Profile', 'Color', BG_COLOR);
+    fig = figure('Name', 'Tracking RMSE Profile', 'Color', BG_COLOR);
     hold on;
 
     % 1) Draw background rings
@@ -499,7 +690,7 @@ function plot_rmse_radar(joints, b_rmse, a_rmse)
     % 2) Draw spokes
     spoke_color = max(GRID_COLOR * 0.85, 0.0);
 
-    for j = 1:length(joints)
+    for j = 1:num_joints
         plot([0, max_scale * cos(angles(j))], [0, max_scale * sin(angles(j))], '-', ...
             'Color', spoke_color, ...
             'HandleVisibility', 'off');
@@ -523,7 +714,7 @@ function plot_rmse_radar(joints, b_rmse, a_rmse)
 
     % 4) Plot values next to each peak
     value_offset = max_scale * 0.09; 
-    for j = 1:length(joints)
+    for j = 1:num_joints
         bx_text = (b_rmse(j) + value_offset) * cos(angles(j));
         by_text = (b_rmse(j) + value_offset) * sin(angles(j));
         text(bx_text, by_text, sprintf('%.2f^\\circ', b_rmse(j)), ...
@@ -557,23 +748,47 @@ function plot_rmse_radar(joints, b_rmse, a_rmse)
            'Location', 'east', ...
            'Color', BG_COLOR, ...
            'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+
+    % Save plot as both a MATLAB figure (.fig) and regular image (.png)
+    save_figure(fig, '3_joint-tracking-rmse-profile');
 end
 
 %{
     @brief Generates a graph comparing "Before" and "After" data using
            joint torque jitter (RMS of discrete derivative dτ/dt).
 
-    @param b_jitter  "Before" jitter data (already RMS-ed)
-    @param a_jitter  "After" jitter data (already RMS-ed)
+    @param joints  Joint name labels
+    @param before  "Before" data struct
+    @param after   "After" data struct
 
-    @return (none)
+    @return b_jitter  "Before" torque jitter RMS per joint
+    @return a_jitter  "After" torque jitter RMS per joint
 %}
-function plot_torque_jitter(joints, b_jitter, a_jitter)
-    global COLOR_BEFORE COLOR_AFTER SHOW_TITLES FONT_SIZE_TITLE FONT_SIZE_AXIS ...
-           FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR GRID_COLOR BAR_WIDTH;
+function [b_jitter, a_jitter] = plot_torque_jitter(joints, before, after)
+    global MAKE_FIGURES SHOW_TITLES COLOR_BEFORE COLOR_AFTER FONT_SIZE_TITLE ...
+           FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR BG_COLOR ...
+           GRID_COLOR BAR_WIDTH;
     
+    num_joints = length(joints);
+
+    % Print detailed metrics
+    b_jitter = calc_rms(before.torque_jitter);
+    a_jitter = calc_rms(after.torque_jitter);
+
+    print_metrics_table_header(4, 'TORQUE JITTER RMS', 5, ' Nm/s');
+    for i = 1:num_joints
+        print_metric_row(joints{i}, b_jitter(i), a_jitter(i), ' Nm/s', 5);
+    end
+    [w_total, ~, ~] = get_table_format(5, ' Nm/s');
+    print_rule('-', w_total);
+
+    % Everything after this is figure/plot related, so exit early if not needed
+    if ~MAKE_FIGURES
+        return;
+    end
+
     % Draw plot
-    figure('Name', 'Torque Jitter RMS', 'Color', BG_COLOR);
+    fig = figure('Name', 'Torque Jitter RMS', 'Color', BG_COLOR);
 
     bar_matrix = [b_jitter; a_jitter]';
     h_bar = bar(bar_matrix, BAR_WIDTH, 'EdgeColor', 'none');
@@ -583,7 +798,7 @@ function plot_torque_jitter(joints, b_jitter, a_jitter)
     % Set properties
     grid on;
 
-    num_elements = 1:length(joints);
+    num_elements = 1:num_joints;
     set(gca, 'Color', BG_COLOR, 'GridColor', GRID_COLOR, ...
              'FontSize', FONT_SIZE_AXIS, ...
              'XColor', TEXT_COLOR, 'YColor', TEXT_COLOR, ...
@@ -604,4 +819,259 @@ function plot_torque_jitter(joints, b_jitter, a_jitter)
            'Location', 'best', ...
            'Color', BG_COLOR, ...
            'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+
+    % Save plot as both a MATLAB figure (.fig) and regular image (.png)
+    save_figure(fig, '4_torque-jitter-rms');
+end
+
+%% FUNCTIONS (HELPERS)
+
+%{
+    @brief Calculates boxplot metrics for given data.
+    
+    @param data  Numeric matrix, where rows represent samples and columns
+                 represent distinct joints
+    
+    @return stats  Struct w/ computed metrics (Q1, median, Q3, IQR, upper bound)
+                   for each column
+%}
+function stats = calc_box_metrics(data)
+    p = prctile(data, [25, 50, 75], 1);
+    stats.q1  = p(1, :);
+    stats.med = p(2, :);
+    stats.q3  = p(3, :);
+    stats.iqr = stats.q3 - stats.q1;
+    
+    ub = stats.q3 + 1.5 * stats.iqr;
+    data_no_outliers = data; 
+    data_no_outliers(data > ub) = -inf;
+    stats.ub = max(data_no_outliers, [], 1, 'omitnan');
+end
+
+%{
+    @brief Computes column-wise RMS, ignoring NaNs.
+
+    @param data  Numeric matrix, where rows represent samples and columns
+                 represent individual joints
+
+    @return rms_val  1xN vector of RMS values (one per column)
+%}
+function rms_val = calc_rms(data)
+    rms_val = sqrt(mean(data.^2, 1, 'omitnan'));
+end
+
+%{
+    @brief Constructs format strings for a command line output table.
+
+    @param w_col1    Width of the first column
+    @param unit_sym  Unit suffix applied to numeric values
+
+    @return w_total  Total string length for the table
+    @return hdr_fmt      Formatting string mapping to header padding rules
+    @return row_fmt      Formatting string mapping to row padding rules
+
+    @note In format strings, so many "%%" are required since the output string
+          is a formatted sprintf template.
+%}
+function [w_total, hdr_fmt, row_fmt] = get_table_format(w_col1, unit_sym)
+    global PADDING
+
+    len_pad = length(PADDING);
+    len_u = length(unit_sym);
+    
+    % Determine column widths
+    w1 = abs(w_col1);
+    w2 = 6;  % before: "xxx.xx"
+    w3 = 6;  % after:  "xxx.xx"
+    w4 = 7;  % diff:   "+xxx.xx"
+    w5 = 8;  % change: "+xxx.xx%"
+
+    w_total = w1 + len_pad + ...
+              w2 + len_u + len_pad + ...
+              w3 + len_u + len_pad + ...
+              w4 + len_u + len_pad + ...
+              w5;
+    
+    % Determine alignment of first column
+    if w_col1 < 0
+        % Left-aligned
+        c1_hdr_fmt = sprintf('%%-%ds', w1);
+        c1_row_fmt = sprintf('%%-%ds', w1);
+    else
+        % Right-aligned
+        c1_hdr_fmt = sprintf('%%%ds', w1);
+        c1_row_fmt = sprintf('%%%ds', w1);
+    end
+
+    % Create format strings
+    % - Headers are right-aligned with offset based on unit suffix
+    pad_right = blanks(max(len_u - 1, 0));
+    hdr_fmt = sprintf('%s%s%%%ds%s%s%%%ds%s%s%%%ds%s%s%%%ds\\n', ...
+                      c1_hdr_fmt, PADDING, ...
+                      w2 + 1, pad_right, PADDING, ...
+                      w3 + 1, pad_right, PADDING, ...
+                      w4 + 1, pad_right, PADDING, ...
+                      w5);
+
+    % - Row metrics are decimal/right-aligned (aside from first column)
+    row_fmt = sprintf('%s%s%%%ds%s%%%ds%s%%%ds%s%%%ds\\n', ...
+                      c1_row_fmt, PADDING, ...
+                      w2 + len_u, PADDING, ...
+                      w3 + len_u, PADDING, ...
+                      w4 + len_u, PADDING, ...
+                      w5);
+end
+
+%{
+    @brief Prints a single fixed-width horizontal rule (line).
+
+    @param rule_char  Character to build the rule with (e.g. '=', '-')
+    @param w_total    Rule length
+
+    @return (none)
+%}
+function print_rule(rule_char, w_total)
+    fprintf('%s\n', repmat(rule_char, 1, w_total));
+end
+
+%{
+    @brief Prints a bordered, centered banner for an analysis section.
+
+    @param section_title  Descriptive title
+    @param w_total        Banner length
+
+    @return (none)
+%}
+function print_section_banner(section_title, w_total)
+    pad = max(floor((w_total - length(section_title)) / 2), 0);
+
+    fprintf('\n');
+    print_rule('=', w_total);
+    fprintf('%s%s\n', blanks(pad), section_title);
+    print_rule('=', w_total);
+end
+
+%{
+    @brief Pads a string for center alignment.
+    
+    @param val    String content to center
+    @param width  Target string width
+
+    @return str   Padded, center-aligned string
+%}
+function str = center_str(val, width)
+    pad_total = max(width - length(val), 0);
+    pad_left = floor(pad_total / 2);
+    pad_right = ceil(pad_total / 2);
+
+    str = [blanks(pad_left), val, blanks(pad_right)];
+end
+
+%{
+    @brief Helper for standardizing summary rows inside a constrained banner width
+
+    @param str1     String to center in first column
+    @param w1       Width of first column
+    @param str2     String to center in second column
+    @param w1       Width of second column
+    @param str3     String to center in third column
+    @param w1       Width of third column
+    @param w_total  Total line length
+
+    @return (none)
+%}
+function print_summary_row(str1, w1, str2, w2, str3, w3, w_total)
+    global PADDING
+
+    % Center-align strings with whitespace padding
+    fstr1 = center_str(str1, w1);
+    fstr2 = center_str(str2, w2);
+    fstr3 = center_str(str3, w3);
+    
+    % Ensures exactly 3 characters of padding between them
+    line_str = [fstr1, PADDING, fstr2, PADDING, fstr3];
+    left_pad = floor((w_total - length(line_str)) / 2);
+    
+    fprintf('%s%s\n', blanks(left_pad), line_str);
+end
+
+%{
+    @brief Prints the formatted banner and column headers shared by every
+           per-joint "Before/After" table.
+
+    @param section_num    Analysis section index (e.g. 1, 2, ...)
+    @param section_title  Descriptive title
+    @param w_col1         Width of the first column
+    @param unit_sym       Unit suffix applied to numeric values
+
+    @return (none)
+%}
+function print_metrics_table_header(section_num, section_title, w_col1, unit_sym)
+    % Generate format string and print formatted header
+    [w_total, hdr_fmt, ~] = get_table_format(w_col1, unit_sym);
+    
+    print_section_banner(sprintf('%d. %s', section_num, section_title), w_total);
+    fprintf(hdr_fmt, 'Joint', 'Before', 'After', 'Abs Diff', '% Change');
+    print_rule('-', w_total);
+end
+
+%{
+    @brief Prints a formatted row of a "Before/After" table, including the
+           absolute difference and percent change between the two values.
+
+    @param row_label  Leading row label (e.g. joint name); '' to leave blank
+    @param b_val      "Before" value
+    @param a_val      "After" value
+    @param unit_sym   Unit suffix applied to numeric values
+    @param w_col1     Width of the first column
+
+    @return (none)
+%}
+function print_metric_row(row_label, b_val, a_val, unit_sym, w_col1)
+    diff_val = a_val - b_val;
+    percent_val = 0;
+    if b_val ~= 0
+        percent_val = (diff_val / b_val) * 100;
+    end
+
+    % Pre-format values + units to ensure alignment
+    b_str = sprintf('%.2f%s', b_val, unit_sym);
+    a_str = sprintf('%.2f%s', a_val, unit_sym);
+    d_str = sprintf('%+.2f%s', diff_val, unit_sym);
+    p_str = sprintf('%+7.2f%%', percent_val);
+
+    % Generate format string and print formatted row
+    [~, ~, row_fmt] = get_table_format(w_col1, unit_sym);
+    
+    fprintf(row_fmt, row_label, b_str, a_str, d_str, p_str);
+end
+
+%{
+    @brief Saves a figure or axes.
+
+    @param handle         Handle of the figure or axes to save
+    @param filename_base  Base filename (without extension)
+
+    @return (none)
+%}
+function save_figure(handle, filename_base)
+    global PNG_RESOLUTION
+
+    % Prepare output directory specifically for figures
+    script_dir = fileparts(mfilename('fullpath'));
+    output_dir = fullfile(script_dir, 'output', 'joint_performance_figs');
+    if ~exist(output_dir, 'dir')  % checked in BODY, but just to be safe
+        mkdir(output_dir);
+    end
+    
+    % Save a MATLAB figure file (.fig)
+    % (NOTE: doesn't work with axes handles)
+    is_axes = strcmp(get(handle, 'Type'), 'axes');
+    if ~is_axes
+        savefig(handle, fullfile(output_dir, [filename_base '.fig']));
+    end
+    
+    % Save a regular image file (.png)
+    exportgraphics(handle, fullfile(output_dir, [filename_base '.png']),
+                   'Resolution', PNG_RESOLUTION);
 end
