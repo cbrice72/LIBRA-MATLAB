@@ -1072,6 +1072,6 @@ function save_figure(handle, filename_base)
     end
     
     % Save a regular image file (.png)
-    exportgraphics(handle, fullfile(output_dir, [filename_base '.png']),
+    exportgraphics(handle, fullfile(output_dir, [filename_base '.png']), ...
                    'Resolution', PNG_RESOLUTION);
 end
