@@ -16,10 +16,12 @@ clc; clear; close all;
 [file, path] = uigetfile('*.csv', 'Select histogram CSV');
 filepath = fullfile(path, file);
 T = readtable(filepath, 'Delimiter', ';', 'VariableNamingRule', 'preserve');
+T = T(:, 1:4);  % just in case CSV was exported with a trailing semicolon (;)
 T.Properties.VariableNames = {'Class', 'Value', 'ClassStart', 'ClassEnd'};
 
 % Retrieve necessary data
 values = T.Value;
+edges = [T.ClassStart; T.ClassEnd(end)];   % (n+1) bin edges, ascending
 centers = (T.ClassStart + T.ClassEnd) / 2;
 
 %% CALCULATIONS
@@ -67,34 +69,170 @@ fprintf('          p25:  % .4f m\n', p25);
 fprintf('          p75:  % .4f m\n', p75);
 
 %% VISUALIZATION
-plot_histogram(centers, values, ...
-    'Mean', w_mean, 'SD', w_std, w_mean - w_std, w_mean + w_std);
-plot_histogram(centers, values, ...
-    'Median',  p50, 'IQR', iqr_val/2, p25, p75);
+plot_histograms(edges, centers, values, w_mean, w_std, p25, p50, p75, iqr_val);
 
 %% FUNCTIONS
-function plot_histogram(hist_centers, hist_values, center_lbl, center_val, spread_lbl, spread_val, spread_upper, spread_lower)
+
+%{
+    @brief Generates signed and absolute-value M3C2 distance histograms, with
+           "Mean/StdDev" and "Median/IQR" variants for each (4 figures total).
+
+    @param edges    (n+1)x1 vector of bin edges, ascending
+    @param centers  Nx1 vector of bin centers
+    @param values   Nx1 vector of bin counts
+    @param w_mean   Weighted mean
+    @param w_std    Weighted standard deviation
+    @param p25      25th percentile
+    @param p50      50th percentile (median)
+    @param p75      75th percentile
+    @param iqr_val  Interquartile range (p75 - p25)
+%}
+function plot_histograms(edges, centers, values, w_mean, w_std, p25, p50, p75, iqr_val)
+    % Generate signed distance histograms
+    plot_signed_histogram(centers, values, ...
+        'Mean', w_mean, 'Std Dev', w_std, w_mean - w_std, w_mean + w_std);
+    plot_signed_histogram(centers, values, ...
+        'Median', p50, 'IQR', iqr_val/2, p25, p75);
+
+    % Generate absolute distance histograms
+    % NOTE: We cannot assume bins are symmetric about zero, so we must:
+    %   1) Reflect each bin about zero (splitting any bin that straddles zero)
+    %   2) Redistribute them onto a new zero-based grid based on overlap
+    bin_width = mean(diff(edges));
+    [abs_edges, abs_values] = fold_to_abs_histogram(edges, values, bin_width);
+    abs_centers = abs_edges(1:end-1) + bin_width/2;
+    abs_centers = abs_centers(:);
+    abs_values = abs_values(:);
+
+    abs_total = sum(abs_values);
+    abs_mean  = sum(abs_centers .* abs_values) / abs_total;
+    abs_var   = sum(abs_values .* (abs_centers - abs_mean).^2) / abs_total;
+    abs_std   = sqrt(abs_var);
+
+    abs_cum_frac = cumsum(abs_values) / abs_total;
+    abs_p25 = abs_centers(find(abs_cum_frac >= 0.25, 1));
+    abs_p50 = abs_centers(find(abs_cum_frac >= 0.50, 1));
+    abs_p75 = abs_centers(find(abs_cum_frac >= 0.75, 1));
+    abs_iqr = abs_p75 - abs_p25;
+
+    plot_abs_histogram(abs_centers, abs_values, ...
+        'Mean', abs_mean, 'Std Dev', abs_std, abs_mean - abs_std, abs_mean + abs_std);
+    plot_abs_histogram(abs_centers, abs_values, ...
+        'Median', abs_p50, 'IQR', abs_iqr/2, abs_p25, abs_p75);
+end
+
+%{
+    @brief Re-bin a signed histogram onto an absolute-value (>0) histogram. If a
+           bin in the original data straddles zero, it is proportionally split
+           into positive/negative based on its interval width. Similarly, each
+           bin in the negative half of the histogram is reflected onto the
+           positive axis and apportioned into existing bins based on overlap.
+
+    @note This function assumes counts are spread uniformly within a bin.
+
+    @param edges        (n+1)x1 vector of original bin edges, ascending
+    @param values       Nx1 vector of original bin counts
+    @param bin_width    Width of the new abs. value histogram
+
+    @return abs_edges   1x(M+1) vector of new histogram bin edges
+    @return abs_values  Mx1 vector of redistributed bin counts
+%}
+function [abs_edges, abs_values] = fold_to_abs_histogram(edges, values, bin_width)
+    max_abs = max(abs(edges));
+    n_abs_bins = ceil(max_abs / bin_width);
+    abs_edges = (0:n_abs_bins) * bin_width;
+    abs_values = zeros(n_abs_bins, 1);
+
+    n = numel(values);
+    for i = 1:n
+        v = values(i);
+        if v == 0
+            continue;
+        end
+        
+        local_min = edges(i);
+        local_max = edges(i+1);
+
+        if local_max <= 0
+            % Left side of histogram: reflect across x=0
+            add_interval(-local_max, -local_min, v);
+        elseif local_min >= 0
+            % Right side of histogram: leave as-is
+            add_interval(local_min, local_max, v);
+        else
+            % Straddles x=0: split based on width, reflect negative part
+            w_total = local_max - local_min;
+            w_neg = -local_min;
+            w_pos = local_max;
+            add_interval(0, w_neg, v * w_neg / w_total);
+            add_interval(0, w_pos, v * w_pos / w_total);
+        end
+    end
+
+    %{
+        @brief Distributes a bin count value across an abs. values histogram in
+               proportion to how much the interval `[a, b)` overlaps each bin.
+
+        @note Nested functions (such as this one) share the parent's local vars.
+
+        @param a    Lower bound of the interval to distribute
+        @param b    Upper bound of the interval to distribute
+        @param val  Count value to distribute
+    %}
+    function add_interval(a, b, val)
+        if b <= a || val == 0
+            return;
+        end
+
+        width = b - a;
+        k_lo = floor(a / bin_width) + 1;
+        k_hi = ceil(b / bin_width);
+
+        for k = k_lo:k_hi
+            bin_lo = (k - 1) * bin_width;
+            bin_hi = k * bin_width;
+            ov = min(b, bin_hi) - max(a, bin_lo);
+            if ov > 0
+                abs_values(k) = abs_values(k) + val * (ov / width);
+            end
+        end
+    end
+end
+
+%{
+    @brief Plots a SIGNED distance histogram with statistical.
+
+    @param hist_centers  Nx1 vector of bin centers (abs. distance values)
+    @param hist_values   Nx1 vector of bin counts
+    @param center_lbl    Label for the centerline statistic (e.g. "Mean")
+    @param center_val    Value of the centerline statistic
+    @param spread_lbl    Label for the spread statistic (e.g. "StdDev")
+    @param spread_val    Value of the spread statistic ("+/-" in legend)
+    @param spread_upper  X-position of the upper spread reference line
+    @param spread_lower  X-position of the lower spread reference line
+%}
+function plot_signed_histogram(hist_centers, hist_values, center_lbl, center_val, spread_lbl, spread_val, spread_upper, spread_lower)
     font_size = 16;
 
     figure('Name', ['M3C2 Distance Distribution - ' center_lbl], 'Color', 'w');
     hold on;
-    
+
     % Create histogram
     bar(hist_centers, hist_values, 1, ...
         'FaceColor', [0.2 0.4 0.6], ...
         'EdgeColor', 'none', ...
         'FaceAlpha', 0.7);
-    
+
     %xlim([center_val - 3*spread_val, center_val + 3*spread_val]);
     xlim([-1.4, 1.4]);
     y_max_rounded = ceil(max(hist_values) / 500) * 500;
     ylim([0, y_max_rounded]);
-    
+
     % Add statistical reference lines
     l1 = xline(center_val, '--r', 'LineWidth', 2);
     l2 = xline(spread_upper, ':g', 'LineWidth', 2);
     xline(spread_lower, ':g', 'LineWidth', 2);
-    
+
     % Formatting
     grid on;
     ax = gca;
@@ -103,7 +241,7 @@ function plot_histogram(hist_centers, hist_values, center_lbl, center_val, sprea
     ax.YColor = 'k';
     ax.GridAlpha = 0.2;
     ax.FontSize = font_size;  % for axis ticks
-    
+
     %title(['M3C2 Distance Distribution (n = ', num2str(total), ')'], ...
     %    'Color', 'k', ...
     %    'FontSize', f_size + 2);
@@ -113,7 +251,7 @@ function plot_histogram(hist_centers, hist_values, center_lbl, center_val, sprea
     ylabel('Point Count', ...
         'Color', 'k', ...
         'FontSize', font_size);
-    
+
     % Legend
     lgd = legend([l1, l2], ...
         {[center_lbl, ': ', num2str(center_val, '%.4f'), ' m'], ...
@@ -122,6 +260,71 @@ function plot_histogram(hist_centers, hist_values, center_lbl, center_val, sprea
         'FontSize', font_size);
     lgd.Color = 'w';
     lgd.TextColor = 'k';
-    
+
+    hold off;
+end
+
+%{
+    @brief Plots an ABSOLUTE distance histogram with statistical reference lines.
+           Same structure as `plot_signed_histogram()`, but x-axis only covers non-negative distances.
+
+    @param hist_centers  Nx1 vector of bin centers (abs. distance values)
+    @param hist_values   Nx1 vector of bin counts
+    @param center_lbl    Label for the centerline statistic (e.g. "Mean")
+    @param center_val    Value of the centerline statistic
+    @param spread_lbl    Label for the spread statistic (e.g. "StdDev")
+    @param spread_val    Value of the spread statistic ("+/-" in legend)
+    @param spread_upper  X-position of the upper spread reference line
+    @param spread_lower  X-position of the lower spread reference line
+%}
+function plot_abs_histogram(hist_centers, hist_values, center_lbl, center_val, spread_lbl, spread_val, spread_upper, spread_lower)
+    font_size = 16;
+
+    figure('Name', ['M3C2 Absolute Distance Distribution - ' center_lbl], 'Color', 'w');
+    hold on;
+
+    % Create histogram
+    bar(hist_centers, hist_values, 1, ...
+        'FaceColor', [0.2 0.4 0.6], ...
+        'EdgeColor', 'none', ...
+        'FaceAlpha', 0.7);
+
+    xlim([0, 1.4]);
+    y_max_rounded = ceil(max(hist_values) / 500) * 500;
+    ylim([0, y_max_rounded]);
+
+    % Add statistical reference lines
+    l1 = xline(center_val, '--r', 'LineWidth', 2);
+    l2 = xline(spread_upper, ':g', 'LineWidth', 2);
+    xline(spread_lower, ':g', 'LineWidth', 2);
+
+    % Formatting
+    grid on;
+    ax = gca;
+    ax.Color = 'w';
+    ax.XColor = 'k';
+    ax.YColor = 'k';
+    ax.GridAlpha = 0.2;
+    ax.FontSize = font_size;  % for axis ticks
+
+    %title(['M3C2 Absolute Distance Distribution (n = ', num2str(total), ')'], ...
+    %    'Color', 'k', ...
+    %    'FontSize', f_size + 2);
+    xlabel('Absolute Distance (m)', ...
+        'Color', 'k', ...
+        'FontSize', font_size);
+    ylabel('Point Count', ...
+        'Color', 'k', ...
+        'FontSize', font_size);
+
+    % Legend
+    lgd = legend([l1, l2], ...
+        {[center_lbl, ': ', num2str(center_val, '%.4f'), ' m'], ...
+         [spread_lbl, ': \pm', num2str(spread_val, '%.4f'), ' m']}, ...
+        'Location', 'northeast', ...
+        'FontSize', font_size);
+    lgd.Color = 'w';
+    lgd.TextColor = 'k';
+
     hold off;
 end
