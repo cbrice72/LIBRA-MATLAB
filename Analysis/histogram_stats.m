@@ -10,11 +10,30 @@ clc; clear; close all;
 % @date   2026/3/11
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Global plot style variables
+global MAKE_PLOTS SHOW_TITLES PNG_RESOLUTION COLOR_PRIMARY ...
+       FONT_SIZE_TITLE FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR ...
+       BG_COLOR GRID_COLOR LINE_WIDTH BAR_WIDTH;
+
+MAKE_PLOTS         = false;  % whether to generate histograms (total: 4)
+
+SHOW_TITLES        = false;
+PNG_RESOLUTION     = 300;  % dpi
+
+COLOR_PRIMARY      = [0.20, 0.40, 0.60];  % blue
+TEXT_COLOR         = 'k';  % black
+BG_COLOR           = 'w';  % white
+GRID_COLOR         = [0.75, 0.75, 0.75];  % light gray
+
+FONT_SIZE_TITLE    = 22;
+FONT_SIZE_AXIS     = 18;
+FONT_SIZE_LEGEND   = 18;
+TITLE_WEIGHT       = 'bold';
+
+LINE_WIDTH         = 2.8;
+BAR_WIDTH          = 1.0;  % if 1.0, bins will seamlessly align
+
 %% SETUP
-
-global MAKE_PLOTS
-
-MAKE_PLOTS = true;  % whether to generate historgrams (total: 4)
 
 % Load data
 last_dir = getpref('HistogramStatsApp', 'LastDir', pwd);  % get previously referenced dir
@@ -48,7 +67,7 @@ else
 end
 
 % Prepare output log filepath and clear previous log, if any
-summary_file = fullfile(output_dir, ['csv-summary_', out_basename, '.txt']);
+summary_file = fullfile(output_dir, ['hist-summary_', out_basename, '.txt']);
 if exist(summary_file, 'file')
     delete(summary_file);
 end
@@ -128,11 +147,12 @@ fprintf(' Drifts >10cm:  %.2f%%\n', drift_10cm);
 fprintf(' Drifts >35cm:  %.2f%%\n', drift_35cm);
 fprintf(' Drifts >50cm:  %.2f%%\n', drift_50cm);
 
-diary off;  % [log_basename]_details.txt
+diary off;  % csv-summary_[out_basename].txt
 
 %% VISUALIZATION
 if MAKE_PLOTS
-    plot_histograms(output_dir, out_basename, edges, centers, values, w_mean, w_std, p25, p50, p75);
+    plot_histograms(output_dir, out_basename, edges, centers, values, ...
+                    w_mean, w_std, p25, p50, p75);
 end
 
 %% FUNCTIONS
@@ -190,6 +210,79 @@ function plot_histograms(out_dir, id, edges, centers, values, w_mean, w_std, p25
     plot_histogram(out_dir, [id, '_abs_median-iqr'], abs_centers, abs_values, ...
         'Median', abs_p50, 'IQR', abs_iqr/2, abs_p25, abs_p75, ...
         'Absolute Distance', [0, 1.4]);
+end
+
+%{
+    @brief Plots a distance histogram with statistical reference lines
+
+    @param out_dir       Directory in which to place a JPG the histogram
+    @param filename      File name for the JPG
+    @param hist_centers  Nx1 vector of bin centers
+    @param hist_values   Nx1 vector of bin counts
+    @param center_lbl    Label for the centerline statistic (e.g. "Mean")
+    @param center_val    Value of the centerline statistic
+    @param spread_lbl    Label for the spread statistic (e.g. "StdDev")
+    @param spread_val    Value of the spread statistic ("+/-" in legend)
+    @param spread_upper  X-position of the upper spread reference line
+    @param spread_lower  X-position of the lower spread reference line
+    @param dist_label    Label for the x-axis (also used as context in figure name)
+    @param x_limits      1x2 vector of x-axis limits (e.g. [-1.4, 1.4])
+%}
+function plot_histogram(out_dir, filename, hist_centers, hist_values, center_lbl, center_val, spread_lbl, spread_val, spread_upper, spread_lower, dist_label, x_limits)
+    global SHOW_TITLES PNG_RESOLUTION COLOR_PRIMARY ...
+           FONT_SIZE_TITLE FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR ...
+           BG_COLOR GRID_COLOR LINE_WIDTH BAR_WIDTH;
+
+    handle = figure('Name', ['M3C2 ' dist_label ' Distribution - ' center_lbl], ...
+                    'Color', BG_COLOR);
+    hold on;
+
+    % Create histogram
+    bar(hist_centers, hist_values, BAR_WIDTH, ...
+        'FaceColor', COLOR_PRIMARY, ...
+        'EdgeColor', 'none', ...
+        'FaceAlpha', 0.7);
+
+    xlim(x_limits);
+    y_max_rounded = ceil(max(hist_values) / 500) * 500;
+    ylim([0, y_max_rounded]);
+
+    % Add statistical reference lines
+    l1 = xline(center_val, '--r', 'LineWidth', LINE_WIDTH);
+    l2 = xline(spread_upper, ':g', 'LineWidth', LINE_WIDTH);
+    xline(spread_lower, ':g', 'LineWidth', LINE_WIDTH);
+
+    % Formatting
+    set(gca, 'Color', BG_COLOR, 'GridColor', GRID_COLOR, ...
+             'FontSize', FONT_SIZE_AXIS, ...
+             'XColor', TEXT_COLOR, 'YColor', TEXT_COLOR);
+
+    if SHOW_TITLES
+        title(['M3C2 ' dist_label ' Distribution - ' center_lbl], ...
+              'FontSize', FONT_SIZE_TITLE, 'FontWeight', TITLE_WEIGHT, ...
+              'Color', TEXT_COLOR);
+    end
+
+    xlabel([dist_label ' (m)'], ...
+           'FontSize', FONT_SIZE_AXIS, 'FontWeight', TITLE_WEIGHT, ...
+           'Color', TEXT_COLOR);
+    ylabel('Point Count', ...
+           'FontSize', FONT_SIZE_AXIS, 'FontWeight', TITLE_WEIGHT, ...
+           'Color', TEXT_COLOR);
+
+    % Legend
+    legend([l1, l2], ...
+           {[center_lbl, ': ', num2str(center_val, '%.4f'), ' m'], ...
+            [spread_lbl, ': \pm', num2str(spread_val, '%.4f'), ' m']}, ...
+           'Location', 'northeast', ...
+           'Color', BG_COLOR, ...
+           'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+
+    hold off;
+
+    % Save as JPG
+    exportgraphics(handle, fullfile(out_dir, [filename '.png']), ...
+                   'Resolution', PNG_RESOLUTION);
 end
 
 %{
@@ -268,74 +361,4 @@ function [abs_edges, abs_values] = fold_to_abs_histogram(edges, values, bin_widt
             end
         end
     end
-end
-
-%{
-    @brief Plots a distance histogram with statistical reference lines
-
-    @param out_dir       Directory in which to place a JPG the histogram
-    @param filename      File name for the JPG
-    @param hist_centers  Nx1 vector of bin centers
-    @param hist_values   Nx1 vector of bin counts
-    @param center_lbl    Label for the centerline statistic (e.g. "Mean")
-    @param center_val    Value of the centerline statistic
-    @param spread_lbl    Label for the spread statistic (e.g. "StdDev")
-    @param spread_val    Value of the spread statistic ("+/-" in legend)
-    @param spread_upper  X-position of the upper spread reference line
-    @param spread_lower  X-position of the lower spread reference line
-    @param dist_label    Label for the x-axis (also used as context in figure name)
-    @param x_limits      1x2 vector of x-axis limits (e.g. [-1.4, 1.4])
-%}
-function plot_histogram(out_dir, filename, hist_centers, hist_values, center_lbl, center_val, spread_lbl, spread_val, spread_upper, spread_lower, dist_label, x_limits)
-    font_size = 16;
-
-    handle = figure('Name', ['M3C2 ' dist_label ' Distribution - ' center_lbl], ...
-                    'Color', 'w');
-    hold on;
-
-    % Create histogram
-    bar(hist_centers, hist_values, 1, ...
-        'FaceColor', [0.2 0.4 0.6], ...
-        'EdgeColor', 'none', ...
-        'FaceAlpha', 0.7);
-
-    xlim(x_limits);
-    y_max_rounded = ceil(max(hist_values) / 500) * 500;
-    ylim([0, y_max_rounded]);
-
-    % Add statistical reference lines
-    l1 = xline(center_val, '--r', 'LineWidth', 2);
-    l2 = xline(spread_upper, ':g', 'LineWidth', 2);
-    xline(spread_lower, ':g', 'LineWidth', 2);
-
-    % Formatting
-    grid on;
-    ax = gca;
-    ax.Color = 'w';
-    ax.XColor = 'k';
-    ax.YColor = 'k';
-    ax.GridAlpha = 0.2;
-    ax.FontSize = font_size;  % for axis ticks
-
-    xlabel([dist_label ' (m)'], ...
-        'Color', 'k', ...
-        'FontSize', font_size);
-    ylabel('Point Count', ...
-        'Color', 'k', ...
-        'FontSize', font_size);
-
-    % Legend
-    lgd = legend([l1, l2], ...
-        {[center_lbl, ': ', num2str(center_val, '%.4f'), ' m'], ...
-         [spread_lbl, ': \pm', num2str(spread_val, '%.4f'), ' m']}, ...
-        'Location', 'northeast', ...
-        'FontSize', font_size);
-    lgd.Color = 'w';
-    lgd.TextColor = 'k';
-
-    hold off;
-
-    % Save as JPG
-    exportgraphics(handle, fullfile(out_dir, [filename '.png']), ...
-                   'Resolution', 300);
 end
