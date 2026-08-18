@@ -12,9 +12,21 @@ clc; clear; close all;
 
 %% SETUP
 
+global MAKE_PLOTS
+
+MAKE_PLOTS = true;  % whether to generate historgrams (total: 4)
+
 % Load data
-[file, path] = uigetfile('*.csv', 'Select histogram CSV');
+last_dir = getpref('HistogramStatsApp', 'LastDir', pwd);  % get previously referenced dir
+
+[file, path] = uigetfile(fullfile(last_dir, '*.csv'), 'Select histogram CSV');
+if isequal(file, 0)
+    return;  % User canceled selection
+end
 filepath = fullfile(path, file);
+
+setpref('HistogramStatsApp', 'LastDir', path);  % save selected dir for future runs
+
 T = readtable(filepath, 'Delimiter', ';', 'VariableNamingRule', 'preserve');
 T = T(:, 1:4);  % just in case CSV was exported with a trailing semicolon (;)
 T.Properties.VariableNames = {'Class', 'Value', 'ClassStart', 'ClassEnd'};
@@ -24,11 +36,34 @@ values = T.Value;
 edges = [T.ClassStart; T.ClassEnd(end)];   % (n+1) bin edges, ascending
 centers = (T.ClassStart + T.ClassEnd) / 2;
 
+% Prompt user for output directory and base outfile name
+output_dir = uigetdir(path, 'Select output folder');
+
+[~, default_name, ~] = fileparts(file);  % default to input CSV name
+answer = inputdlg('File basename:', 'Enter Output ID', [1 50], {default_name});
+if isempty(answer) || isempty(strtrim(answer{1}))
+    out_basename = default_name;
+else
+    out_basename = strtrim(answer{1});
+end
+
+% Prepare output log filepath and clear previous log, if any
+summary_file = fullfile(output_dir, ['csv-summary_', out_basename, '.txt']);
+if exist(summary_file, 'file')
+    delete(summary_file);
+end
+
 %% CALCULATIONS
 
 % Counts
 total = sum(values);
 nonzero_bins = sum(values > 0);
+
+% Basic stats
+active_centers = centers(values > 0);
+min_val = min(active_centers);
+max_val = max(active_centers);
+range_val = max_val - min_val;
 
 % Weighted mean
 w_mean = sum(centers .* values) / total;
@@ -37,39 +72,68 @@ w_mean = sum(centers .* values) / total;
 variance = sum(values .* (centers - w_mean).^2) / total;
 w_std = sqrt(variance);
 
+% Distribution shape
+skewness = sum(values .* ((centers - w_mean) ./ w_std).^3) / total;
+kurtosis = sum(values .* ((centers - w_mean) ./ w_std).^4) / total;
+
+% Total absolute error
+rmse = sqrt(sum(values .* (centers.^2)) / total);
+
 % Percentiles
 cum_frac = cumsum(values) / total;
 p25 = centers(find(cum_frac >= 0.25, 1));
 p50 = centers(find(cum_frac >= 0.50, 1));
 p75 = centers(find(cum_frac >= 0.75, 1));
 
+% Drift thresholds (for comparison w/ other CSVs)
+drift_10cm = (sum(values(abs(centers) > 0.10)) / total) * 100;
+drift_35cm = (sum(values(abs(centers) > 0.35)) / total) * 100;
+drift_50cm = (sum(values(abs(centers) > 0.50)) / total) * 100;
+
 %% RESULTS
+
+diary(summary_file);
 
 fprintf('<< NOTE: The following units assume the data has been normalized to 1 meter >>\n\n');
 
-% Name of the file being summarized
+% Metadata
 fprintf('         File:  %s\n', file);
-% No. of samples used to calculate the histogram data
-fprintf(' Sample count: % d\n\n', total);
-% Number of occupied bins; indicates how spread out the distribution is
-%fprintf('Non-zero bins:  %d / %d\n\n', nonzero_bins, numel(values));
+fprintf(' Sample count: % d\n', total);
+%fprintf('Non-zero bins:  %d / %d\n', nonzero_bins, numel(values));  % indicates how spread out the distribution is
+fprintf('\n')
 
-% Signed average distance between clouds; near-zero means no systematic global offset
-fprintf('Weighted mean: % .3f m\n', w_mean);
-% Spread of distances around the mean; large values indicate localised distortions
-fprintf('      Std dev: % .3f m\n\n', w_std);
+% Bounds & shape
+fprintf('          Min: % .3f m\n', min_val);
+fprintf('          Max: % .3f m\n', max_val);
+fprintf('        Range: % .3f m\n', range_val);
+fprintf('     Skewness: % .3f\n', skewness);
+fprintf('     Kurtosis: % .3f\n', kurtosis);
+fprintf('\n')
 
-% 25th percentile
+% Core stats
+fprintf('Weighted mean: % .3f m\n', w_mean);  % near-zero means no systematic global offset
+fprintf('      Std dev: % .3f m\n', w_std);  % large values indicate localised distortions
+fprintf('         RMSE: % .3f m\n', rmse);
+fprintf('\n')
+
+% Quantiles
 fprintf('          p25: % .3f m\n', p25);
-% 50th percentile (more outlier-resistant than mean)
-fprintf(' Median (p50): % .3f m\n', p50);
-% 75th percentile
+fprintf(' Median (p50): % .3f m\n', p50);  % more outlier-resistant than mean
 fprintf('          p75: % .3f m\n', p75);
-% Range of the central 50% of points; (more outlier-resistant than std dev)
-fprintf('          IQR: % .3f m (±%.3f m)\n', p75 - p25, (p75 - p25)/2);
+fprintf('          IQR: % .3f m (±%.3f m)\n', p75 - p25, (p75 - p25)/2);  % more outlier-resistant than std dev
+fprintf('\n')
+
+% Drift thresholds
+fprintf(' Drifts >10cm:  %.2f%%\n', drift_10cm);
+fprintf(' Drifts >35cm:  %.2f%%\n', drift_35cm);
+fprintf(' Drifts >50cm:  %.2f%%\n', drift_50cm);
+
+diary off;  % [log_basename]_details.txt
 
 %% VISUALIZATION
-plot_histograms(edges, centers, values, w_mean, w_std, p25, p50, p75);
+if MAKE_PLOTS
+    plot_histograms(output_dir, out_basename, edges, centers, values, w_mean, w_std, p25, p50, p75);
+end
 
 %% FUNCTIONS
 
@@ -77,6 +141,8 @@ plot_histograms(edges, centers, values, w_mean, w_std, p25, p50, p75);
     @brief Generates signed and absolute-value M3C2 distance histograms, with
            "Mean/StdDev" and "Median/IQR" variants for each (4 figures total).
 
+    @param out_dir  Directory in which to place JPGs of all histograms
+    @param id       Identifier to be used as base name for output files
     @param edges    (n+1)x1 vector of bin edges, ascending
     @param centers  Nx1 vector of bin centers
     @param values   Nx1 vector of bin counts
@@ -86,14 +152,14 @@ plot_histograms(edges, centers, values, w_mean, w_std, p25, p50, p75);
     @param p50      50th percentile (median)
     @param p75      75th percentile
 %}
-function plot_histograms(edges, centers, values, w_mean, w_std, p25, p50, p75)
+function plot_histograms(out_dir, id, edges, centers, values, w_mean, w_std, p25, p50, p75)
     iqr_val = p75 - p25;
 
     % Generate signed distance histograms
-    plot_histogram(centers, values, ...
+    plot_histogram(out_dir, [id, '_signed_mean-stddev'], centers, values, ...
         'Mean', w_mean, 'Std Dev', w_std, w_mean - w_std, w_mean + w_std, ...
         'Distance', [-1.4, 1.4]);
-    plot_histogram(centers, values, ...
+    plot_histogram(out_dir, [id, '_signed_median-iqr'], centers, values, ...
         'Median', p50, 'IQR', iqr_val/2, p25, p75, ...
         'Distance', [-1.4, 1.4]);
 
@@ -118,10 +184,10 @@ function plot_histograms(edges, centers, values, w_mean, w_std, p25, p50, p75)
     abs_p75 = abs_centers(find(abs_cum_frac >= 0.75, 1));
     abs_iqr = abs_p75 - abs_p25;
 
-    plot_histogram(abs_centers, abs_values, ...
+    plot_histogram(out_dir, [id, '_abs_mean-stddev'], abs_centers, abs_values, ...
         'Mean', abs_mean, 'Std Dev', abs_std, abs_mean - abs_std, abs_mean + abs_std, ...
         'Absolute Distance', [0, 1.4]);
-    plot_histogram(abs_centers, abs_values, ...
+    plot_histogram(out_dir, [id, '_abs_median-iqr'], abs_centers, abs_values, ...
         'Median', abs_p50, 'IQR', abs_iqr/2, abs_p25, abs_p75, ...
         'Absolute Distance', [0, 1.4]);
 end
@@ -207,6 +273,8 @@ end
 %{
     @brief Plots a distance histogram with statistical reference lines
 
+    @param out_dir       Directory in which to place a JPG the histogram
+    @param filename      File name for the JPG
     @param hist_centers  Nx1 vector of bin centers
     @param hist_values   Nx1 vector of bin counts
     @param center_lbl    Label for the centerline statistic (e.g. "Mean")
@@ -218,11 +286,11 @@ end
     @param dist_label    Label for the x-axis (also used as context in figure name)
     @param x_limits      1x2 vector of x-axis limits (e.g. [-1.4, 1.4])
 %}
-function plot_histogram(hist_centers, hist_values, center_lbl, center_val, spread_lbl, spread_val, spread_upper, spread_lower, dist_label, x_limits)
+function plot_histogram(out_dir, filename, hist_centers, hist_values, center_lbl, center_val, spread_lbl, spread_val, spread_upper, spread_lower, dist_label, x_limits)
     font_size = 16;
 
-    figure('Name', ['M3C2 ' dist_label ' Distribution - ' center_lbl], ...
-           'Color', 'w');
+    handle = figure('Name', ['M3C2 ' dist_label ' Distribution - ' center_lbl], ...
+                    'Color', 'w');
     hold on;
 
     % Create histogram
@@ -266,4 +334,8 @@ function plot_histogram(hist_centers, hist_values, center_lbl, center_val, sprea
     lgd.TextColor = 'k';
 
     hold off;
+
+    % Save as JPG
+    exportgraphics(handle, fullfile(out_dir, [filename '.png']), ...
+                   'Resolution', 300);
 end
