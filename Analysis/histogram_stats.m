@@ -10,28 +10,55 @@ clc; clear; close all;
 % @date   2026/3/11
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Global plot style variables
-global MAKE_PLOTS SHOW_TITLES PNG_RESOLUTION COLOR_PRIMARY ...
-       FONT_SIZE_TITLE FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR ...
-       BG_COLOR GRID_COLOR LINE_WIDTH BAR_WIDTH;
+% Script settings
+make_summary_file = false;       % whether to save command-line summary to file
+make_figures      = true;        % whether to generate histograms (total: 4)
+publication_style = 'springer';  % the journal standard to follow for figures
+print_full_width  = false;       % whether to save half- or full-page-width figures
 
-MAKE_PLOTS         = true;  % whether to generate histograms (total: 4)
+% Plot style settings
+style.TITLE_WEIGHT  = 'bold';
 
-SHOW_TITLES        = false;
-PNG_RESOLUTION     = 300;  % dpi
+style.COLOR_PRIMARY = [0.20, 0.40, 0.60];  % blue
+style.TEXT_COLOR    = 'k';  % black
+style.BG_COLOR      = 'w';  % white
+style.GRID_COLOR    = [0.75, 0.75, 0.75];  % light gray
 
-COLOR_PRIMARY      = [0.20, 0.40, 0.60];  % blue
-TEXT_COLOR         = 'k';  % black
-BG_COLOR           = 'w';  % white
-GRID_COLOR         = [0.75, 0.75, 0.75];  % light gray
+style.BAR_WIDTH     = 1.0;
 
-FONT_SIZE_TITLE    = 22;
-FONT_SIZE_AXIS     = 18;
-FONT_SIZE_LEGEND   = 18;
-TITLE_WEIGHT       = 'bold';
+if strcmpi(publication_style, 'springer')
+    % https://link.springer.com/journal/40648/submission-guidelines#cms-Preparing-illustrations-and-figures
+    style.FIG_UNITS        = 'centimeters';
+    if print_full_width
+        style.FIG_WIDTH    = 17.0;
+    else
+        style.FIG_WIDTH    = 8.5;
+    end
+    style.FIG_HEIGHT       = style.FIG_WIDTH * 0.62;  % arbitrary
+    
+    style.PNG_RESOLUTION   = 300;  % dpi
 
-LINE_WIDTH         = 2.8;
-BAR_WIDTH          = 1.0;  % if 1.0, bins will seamlessly align
+    style.SHOW_TITLES      = false;
+    style.FONT_SIZE_TITLE  = 10;  % pt
+    style.FONT_SIZE_AXIS   = 8.5;
+    style.FONT_SIZE_LEGEND = 7.5;
+
+    style.LINE_WIDTH       = 1.0;  % must be > 0.25
+else
+    % Safe default for web
+    style.FIG_UNITS        = 'auto';
+    style.FIG_WIDTH        = 1200;
+    style.FIG_HEIGHT       = style.FIG_WIDTH * 0.62;  % arbitrary
+
+    style.PNG_RESOLUTION   = 300;
+    
+    style.SHOW_TITLES      = true;
+    style.FONT_SIZE_TITLE  = 30;
+    style.FONT_SIZE_AXIS   = 26;
+    style.FONT_SIZE_LEGEND = 26;
+    
+    style.LINE_WIDTH       = 2.8;
+end
 
 %% SETUP
 
@@ -57,6 +84,9 @@ centers = (T.ClassStart + T.ClassEnd) / 2;
 
 % Prompt user for output directory and base outfile name
 output_dir = uigetdir(path, 'Select output folder');
+if isequal(output_dir, 0)
+    return;  % user canceled selection
+end
 
 [~, default_name, ~] = fileparts(file);  % default to input CSV name
 answer = inputdlg('File basename:', 'Enter Output ID', [1 50], {default_name});
@@ -67,9 +97,11 @@ else
 end
 
 % Prepare output log filepath and clear previous log, if any
-summary_file = fullfile(output_dir, ['hist-summary_', out_basename, '.txt']);
-if exist(summary_file, 'file')
-    delete(summary_file);
+if make_summary_file
+    summary_file = fullfile(output_dir, ['hist-summary_', out_basename, '.txt']);
+    if exist(summary_file, 'file')
+        delete(summary_file);
+    end
 end
 
 %% CALCULATIONS
@@ -77,6 +109,9 @@ end
 % Counts
 total = sum(values);
 nonzero_bins = sum(values > 0);
+if total <= 0
+    error('histogram_stats:noData', 'Sum of histogram values is zero or negative; check the input CSV');
+end
 
 % Basic stats
 active_centers = centers(values > 0);
@@ -95,7 +130,7 @@ w_std = sqrt(variance);
 skewness = sum(values .* ((centers - w_mean) ./ w_std).^3) / total;
 kurtosis = sum(values .* ((centers - w_mean) ./ w_std).^4) / total;
 
-% Total absolute error
+% Root-mean-square error (quadratic mean distance from zero)
 rmse = sqrt(sum(values .* (centers.^2)) / total);
 
 % Percentiles
@@ -111,7 +146,9 @@ drift_50cm = (sum(values(abs(centers) > 0.50)) / total) * 100;
 
 %% RESULTS
 
-diary(summary_file);
+if make_summary_file
+    diary(summary_file);
+end
 
 fprintf('<< NOTE: The following units assume the data has been normalized to 1 meter >>\n\n');
 
@@ -147,12 +184,14 @@ fprintf(' Drifts >10cm:  %.2f%%\n', drift_10cm);
 fprintf(' Drifts >35cm:  %.2f%%\n', drift_35cm);
 fprintf(' Drifts >50cm:  %.2f%%\n', drift_50cm);
 
-diary off;  % csv-summary_[out_basename].txt
+if make_summary_file
+    diary off;  % csv-summary_[out_basename].txt
+end
 
-%% VISUALIZATION
-if MAKE_PLOTS
+% Visualizations
+if make_figures
     plot_histograms(output_dir, out_basename, edges, centers, values, ...
-                    w_mean, w_std, p25, p50, p75);
+                    w_mean, w_std, p25, p50, p75, style);
 end
 
 %% FUNCTIONS
@@ -171,19 +210,12 @@ end
     @param p25      25th percentile
     @param p50      50th percentile (median)
     @param p75      75th percentile
+    @param style    Struct containing plot/figure style definitions
 %}
-function plot_histograms(out_dir, id, edges, centers, values, w_mean, w_std, p25, p50, p75)
+function plot_histograms(out_dir, id, edges, centers, values, w_mean, w_std, ...
+                         p25, p50, p75, style)
     iqr_val = p75 - p25;
 
-    % Generate signed distance histograms
-    plot_histogram(out_dir, [id, '_signed_mean-stddev'], centers, values, ...
-        'Mean', w_mean, 'Std Dev', w_std, w_mean - w_std, w_mean + w_std, ...
-        'Distance', [-1.4, 1.4]);
-    plot_histogram(out_dir, [id, '_signed_median-iqr'], centers, values, ...
-        'Median', p50, 'IQR', iqr_val/2, p25, p75, ...
-        'Distance', [-1.4, 1.4]);
-
-    % Generate absolute distance histograms
     % NOTE: We cannot assume bins are symmetric about zero, so we must:
     %   1) Reflect each bin about zero (splitting any bin that straddles zero)
     %   2) Redistribute them onto a new zero-based grid based on overlap
@@ -194,6 +226,9 @@ function plot_histograms(out_dir, id, edges, centers, values, w_mean, w_std, p25
     abs_values = abs_values(:);
 
     abs_total = sum(abs_values);
+    if abs_total <= 0
+        error('histogram_stats:noAbsData', 'Absolute-value histogram has no data; check the input CSV');
+    end
     abs_mean  = sum(abs_centers .* abs_values) / abs_total;
     abs_var   = sum(abs_values .* (abs_centers - abs_mean).^2) / abs_total;
     abs_std   = sqrt(abs_var);
@@ -204,12 +239,26 @@ function plot_histograms(out_dir, id, edges, centers, values, w_mean, w_std, p25
     abs_p75 = abs_centers(find(abs_cum_frac >= 0.75, 1));
     abs_iqr = abs_p75 - abs_p25;
 
-    plot_histogram(out_dir, [id, '_abs_mean-stddev'], abs_centers, abs_values, ...
-        'Mean', abs_mean, 'Std Dev', abs_std, abs_mean - abs_std, abs_mean + abs_std, ...
-        'Absolute Distance', [0, 1.4]);
-    plot_histogram(out_dir, [id, '_abs_median-iqr'], abs_centers, abs_values, ...
-        'Median', abs_p50, 'IQR', abs_iqr, abs_p25, abs_p75, ...
-        'Absolute Distance', [0, 1.4]);
+    % Generate histograms
+    configs = { ...
+        {'_signed_mean-stddev', centers, values, ...
+            'Mean', w_mean, 'StdDev', w_std, w_mean - w_std, w_mean + w_std, ...
+            'Distance', [-1.4, 1.4]}, ...
+        {'_signed_median-iqr', centers, values, ...
+            'Median', p50, 'IQR', iqr_val/2, p25, p75, ...
+            'Distance', [-1.4, 1.4]}, ...
+        {'_abs_mean-stddev', abs_centers, abs_values, ...
+            'Mean', abs_mean, 'StdDev', abs_std, abs_mean - abs_std, abs_mean + abs_std, ...
+            'Absolute Distance', [0, 1.4]}, ...
+        {'_abs_median-iqr', abs_centers, abs_values, ...
+            'Median', abs_p50, 'IQR', abs_iqr, abs_p25, abs_p75, ...
+            'Absolute Distance', [0, 1.4]} ...
+    };
+
+    for i = 1:numel(configs)
+        c = configs{i};
+        plot_histogram(out_dir, [id, c{1}], c{2}, c{3}, c{4}, c{5}, c{6}, c{7}, c{8}, c{9}, c{10}, c{11}, style);
+    end
 end
 
 %{
@@ -227,19 +276,19 @@ end
     @param spread_upper      X-position of the upper spread reference line
     @param distribution_lbl  Label for the x-axis (also used as context in figure name)
     @param x_limits          1x2 vector of x-axis limits (e.g. [-1.4, 1.4])
+    @param style             Struct containing plot/figure style definitions
 %}
-function plot_histogram(out_dir, filename, hist_centers, hist_values, center_lbl, center_val, spread_lbl, spread_val, spread_lower, spread_upper, distribution_lbl, x_limits)
-    global SHOW_TITLES PNG_RESOLUTION COLOR_PRIMARY ...
-           FONT_SIZE_TITLE FONT_SIZE_AXIS FONT_SIZE_LEGEND TITLE_WEIGHT TEXT_COLOR ...
-           BG_COLOR GRID_COLOR LINE_WIDTH BAR_WIDTH;
-
+function plot_histogram(out_dir, filename, hist_centers, hist_values, center_lbl, center_val, ...
+                        spread_lbl, spread_val, spread_lower, spread_upper, distribution_lbl, x_limits, style)
     handle = figure('Name', ['M3C2 ' distribution_lbl ' Distribution - ' center_lbl], ...
-                    'Color', BG_COLOR);
+                    'Color', style.BG_COLOR, ...
+                    'Units', style.FIG_UNITS, ...
+                    'Position', [2, 2, style.FIG_WIDTH, style.FIG_HEIGHT]);
     hold on;
 
     % Create histogram
-    bar(hist_centers, hist_values, BAR_WIDTH, ...
-        'FaceColor', COLOR_PRIMARY, ...
+    bar(hist_centers, hist_values, style.BAR_WIDTH, ...
+        'FaceColor', style.COLOR_PRIMARY, ...
         'EdgeColor', 'none', ...
         'FaceAlpha', 0.7);
 
@@ -248,54 +297,70 @@ function plot_histogram(out_dir, filename, hist_centers, hist_values, center_lbl
     ylim([0, y_max_rounded]);
 
     % Add statistical reference lines
-    l1 = xline(center_val, '--r', 'LineWidth', LINE_WIDTH);
-    l2 = xline(spread_lower, ':g', 'LineWidth', LINE_WIDTH);
-    l3 = xline(spread_upper, ':g', 'LineWidth', LINE_WIDTH);
+    l1 = xline(center_val, '--r', 'LineWidth', style.LINE_WIDTH);
+    l2 = xline(max(spread_lower, x_limits(1)), ':g', 'LineWidth', style.LINE_WIDTH);
+    l3 = xline(min(spread_upper, x_limits(2)), ':g', 'LineWidth', style.LINE_WIDTH);
 
-    % Formatting
-    set(gca, 'Color', BG_COLOR, 'GridColor', GRID_COLOR, ...
-             'FontSize', FONT_SIZE_AXIS, ...
-             'XColor', TEXT_COLOR, 'YColor', TEXT_COLOR);
+    % Format plot
+    ax = gca;
+    ax.Color = style.BG_COLOR;
+    ax.GridColor = style.GRID_COLOR;
+    ax.FontSize = style.FONT_SIZE_AXIS;
+    ax.XColor = style.TEXT_COLOR;
+    ax.YColor = style.TEXT_COLOR;
 
-    if SHOW_TITLES
+    if style.SHOW_TITLES
         title(['M3C2 ' distribution_lbl ' Distribution - ' center_lbl], ...
-              'FontSize', FONT_SIZE_TITLE, 'FontWeight', TITLE_WEIGHT, ...
-              'Color', TEXT_COLOR);
+              'FontSize', style.FONT_SIZE_TITLE, 'FontWeight', style.TITLE_WEIGHT, ...
+              'Color', style.TEXT_COLOR);
     end
 
     xlabel([distribution_lbl ' (m)'], ...
-           'FontSize', FONT_SIZE_AXIS, 'FontWeight', TITLE_WEIGHT, ...
-           'Color', TEXT_COLOR);
+           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.TITLE_WEIGHT, ...
+           'Color', style.TEXT_COLOR);
     ylabel('Point Count', ...
-           'FontSize', FONT_SIZE_AXIS, 'FontWeight', TITLE_WEIGHT, ...
-           'Color', TEXT_COLOR);
+           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.TITLE_WEIGHT, ...
+           'Color', style.TEXT_COLOR);
 
-    % Legend
-    if contains(distribution_lbl, 'Absolute') && strcmp(spread_lbl, 'IQR')
-        % Only the absolute IQR is asymmetrical around the median
+    % Format legend
+    is_asymmetric = spread_lower < x_limits(1) || spread_upper > x_limits(2) || ...
+                    (contains(distribution_lbl, 'Absolute') && strcmp(spread_lbl, 'IQR'));
+    
+    if is_asymmetric
+        if strcmp(spread_lbl, 'IQR')
+            % Only the absolute IQR is asymmetrical around the median
+            lower_lbl = 'Q1'; upper_lbl = 'Q3';
+        else
+            lower_lbl = 'Lower'; upper_lbl = 'Upper';
+        end
+        
         l_dummy = plot(NaN, NaN, 'w');  % invisible handle for adding text
-        legend([l1, l_dummy, l2, l3], ...
+        lgd = legend([l1, l_dummy, l2, l3], ...
                {[center_lbl, ': ', num2str(center_val, '%.3f'), ' m'], ...
                 [spread_lbl, ': ', num2str(spread_val, '%.3f'), ' m'], ...
-                ['Q1: ', num2str(spread_lower, '%.3f'), ' m'], ...
-                ['Q3: ', num2str(spread_upper, '%.3f'), ' m']}, ...
-               'Location', 'northeast', ...
-               'Color', BG_COLOR, ...
-               'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+                [lower_lbl, ': ', num2str(spread_lower, '%.3f'), ' m'], ...
+                [upper_lbl, ': ', num2str(spread_upper, '%.3f'), ' m']});
     else
-        legend([l1, l2], ...
+        lgd = legend([l1, l2], ...
                {[center_lbl, ': ', num2str(center_val, '%.3f'), ' m'], ...
-                [spread_lbl, ': \pm', num2str(spread_val, '%.3f'), ' m']}, ...
-               'Location', 'northeast', ...
-               'Color', BG_COLOR, ...
-               'FontSize', FONT_SIZE_LEGEND, 'TextColor', TEXT_COLOR);
+                [spread_lbl, ': ±', num2str(spread_val, '%.3f'), ' m']});
     end
+    
+    lgd.Location = 'northeast';
+    lgd.ItemTokenSize = [12, 18];  % shrink sample line length (default: [30, 18])
+    lgd.Color = style.BG_COLOR;
+    lgd.FontSize = style.FONT_SIZE_LEGEND;
+    lgd.TextColor = style.TEXT_COLOR;
 
     hold off;
 
-    % Save as JPG
+    % Save figure
     exportgraphics(handle, fullfile(out_dir, [filename '.png']), ...
-                   'Resolution', PNG_RESOLUTION);
+                   'Padding', 'tight', 'Resolution', style.PNG_RESOLUTION);
+    exportgraphics(handle, fullfile(out_dir, [filename '.pdf']), ...
+                   'Padding', 'tight', 'ContentType', 'vector');
+
+    close(handle);
 end
 
 %{
