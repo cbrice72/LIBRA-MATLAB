@@ -90,10 +90,6 @@ function compare_joint_performance()
         addpath(misc_path);
     end
 
-    %% SETUP
-
-    joints = {'J1', 'J2', 'J3', 'J4', 'J5'};  % mechanical convention
-    
     % List all the directories we will search for log files in
     % (NOTE: Paths can be absolute or relative to this script)
     before_dirs = { ...
@@ -114,22 +110,30 @@ function compare_joint_performance()
         'E:\LIBRA Archive\2026-06-08 SLAM Data Collection 2\log' ...
     };
 
-    % Ensure the output directory exists
-    out_dir = fullfile(script_dir, 'output');
-    if ~exist(out_dir, 'dir')
-        mkdir(out_dir);
+    %% SETUP
+
+    joints = {'J1', 'J2', 'J3', 'J4', 'J5'};  % mechanical convention
+
+    % Prompt user for output directory
+    global OUT_DIR;  % ensure same output directory everywhere in this script
+
+    last_dir = getpref('JointPerformanceApp', 'LastDir', script_dir);
+    OUT_DIR = uigetdir(last_dir, 'Select output folder');
+    if isequal(OUT_DIR, 0)
+        return;  % user canceled selection
     end
+    setpref('JointPerformanceApp', 'LastDir', OUT_DIR);  % remember for next run
 
     % Prepare output log filepaths and clear previous logs, if any
     log_basename = 'joint_performance';
 
     if make_txt_files
-        details_file = fullfile(out_dir, [log_basename, '_details.txt']);
+        details_file = fullfile(OUT_DIR, [log_basename, '_details.txt']);
         if exist(details_file, 'file')
             delete(details_file);
         end
     
-        summary_file = fullfile(out_dir, [log_basename, '_summary.txt']);
+        summary_file = fullfile(OUT_DIR, [log_basename, '_summary.txt']);
         if exist(summary_file, 'file')
             delete(summary_file);
         end
@@ -1091,23 +1095,24 @@ end
     @return (none)
 %}
 function save_figure(handle, filename, png_resolution)
+    global OUT_DIR;
+
     % Prepare output directory specifically for figures
-    script_dir = fileparts(mfilename('fullpath'));
-    out_dir = fullfile(script_dir, 'output', 'joint_performance_figs');
-    if ~exist(out_dir, 'dir')  % checked in BODY, but just to be safe
-        mkdir(out_dir);
+    fig_dir = fullfile(OUT_DIR, 'joint_performance_figs');
+    if ~exist(fig_dir, 'dir')
+        mkdir(fig_dir);
     end
     
     % Save a MATLAB figure file (.fig)
     % (NOTE: doesn't work with axes handles)
-    is_axes = strcmp(get(handle, 'Type'), 'axes');
-    if ~is_axes
-        savefig(handle, fullfile(out_dir, [filename '.fig']));
-    end
+    %is_axes = strcmp(get(handle, 'Type'), 'axes');
+    %if ~is_axes
+    %    savefig(handle, fullfile(fig_dir, [filename '.fig']));
+    %end
     
     % Save raster and vector image files
-    exportgraphics(handle, fullfile(out_dir, [filename '.png']), ...
+    exportgraphics(handle, fullfile(fig_dir, [filename '.png']), ...
                    'Padding', 'tight', 'Resolution', png_resolution);
-    exportgraphics(handle, fullfile(out_dir, [filename '.pdf']), ...
+    exportgraphics(handle, fullfile(fig_dir, [filename '.pdf']), ...
                    'Padding', 'tight', 'ContentType', 'vector');
 end
