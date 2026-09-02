@@ -28,6 +28,7 @@ function compare_joint_performance()
 
     % Plot style settings
     style.TITLE_WEIGHT       = 'bold';
+    style.LABEL_WEIGHT       = 'normal';
 
     style.TEXT_COLOR         = 'k';  % black
     style.BG_COLOR           = 'w';  % white
@@ -46,8 +47,9 @@ function compare_joint_performance()
     if strcmpi(publication_style, 'springer')
         % https://link.springer.com/journal/40648/submission-guidelines#cms-Preparing-illustrations-and-figures
         style.FIG_UNITS        = 'centimeters';
+        style.FULL_PAGE_WIDTH  = 17.0;  % combined eCDFs figure is always full-width
         if print_full_width
-            style.FIG_WIDTH    = 17.0;
+            style.FIG_WIDTH    = style.FULL_PAGE_WIDTH;
         else
             style.FIG_WIDTH    = 8.5;
         end
@@ -62,6 +64,8 @@ function compare_joint_performance()
     
         style.LINE_WIDTH       = 1.0;  % must be > 0.25
     else
+        style.LABEL_WEIGHT     = style.TITLE_WEIGHT;  % improve visibility
+
         style.FIG_UNITS        = 'auto';
         style.FIG_WIDTH        = 1200;
         style.FIG_HEIGHT       = style.FIG_WIDTH * 0.62;  % arbitrary
@@ -173,7 +177,7 @@ function compare_joint_performance()
     end
 
     if make_figures
-        fprintf('Generating visualizations...\n');
+        fprintf('\nGenerating visualizations...\n');
         plot_absolute_error_boxplots(joints, b_err, a_err, style);
         plot_error_cdfs(joints, b_errs_cdf, a_errs_cdf, b_ys, a_ys, cdf_stats, style);
         plot_rmse_radar(joints, b_rmse, a_rmse, style);
@@ -401,6 +405,10 @@ function plot_absolute_error_boxplots(joints, b_err, a_err, style)
                  'Position', [2, 2, style.FIG_WIDTH, style.FIG_HEIGHT]);
     boxplot(all_data, all_groups, ...
             'Positions', box_positions, 'Symbol', '');
+
+    % Change whisker line style from dashes ('--') to dots (':')
+    %whiskers = [findobj(gca, 'Tag', 'Upper Whisker'); findobj(gca, 'Tag', 'Lower Whisker')];
+    %set(whiskers, 'LineStyle', ':');
     
     whisker_handles = findobj(gca, 'Tag', 'Upper Whisker');
     if ~isempty(whisker_handles)
@@ -411,10 +419,10 @@ function plot_absolute_error_boxplots(joints, b_err, a_err, style)
         else
             max_visible = max(y_data(:));
         end
-        ylim([0, max_visible * 1.05]);
+        ylim([0, max_visible * 1.25]);
     else
         % Fallback: percentile-based limit
-        ylim([0, prctile(all_data, style.Y_LIMIT_PERCENTILE) * 1.05]);
+        ylim([0, prctile(all_data, style.Y_LIMIT_PERCENTILE) * 1.25]);
     end
     
     % Format plot
@@ -433,7 +441,7 @@ function plot_absolute_error_boxplots(joints, b_err, a_err, style)
               'Color', style.TEXT_COLOR);
     end
     ylabel('Absolute Position Error (deg)', ...
-           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.TITLE_WEIGHT, ...
+           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.LABEL_WEIGHT, ...
            'Color', style.TEXT_COLOR);
     
     % Modify line colors to differentiate "before" and "after"
@@ -455,13 +463,15 @@ function plot_absolute_error_boxplots(joints, b_err, a_err, style)
     hold on;
     h_b = plot(NaN, NaN, 'Color', style.COLOR_BEFORE, 'LineWidth', style.LINE_WIDTH);
     h_a = plot(NaN, NaN, 'Color', style.COLOR_AFTER, 'LineWidth', style.LINE_WIDTH);
-    legend([h_b, h_a], {'Before variable gains', 'After variable gains'}, ...
-           'Location', 'north', ...
-           'Color', style.BG_COLOR, ...
-           'FontSize', style.FONT_SIZE_LEGEND, 'TextColor', style.TEXT_COLOR);
+    lgd = legend([h_b, h_a], {'Before redesign', 'After redesign'}, ...
+                 'Location', 'north', ...
+                 'Color', style.BG_COLOR, ...
+                 'FontSize', style.FONT_SIZE_LEGEND, 'TextColor', style.TEXT_COLOR);
+    lgd.ItemTokenSize = [12, 18];  % shrink sample line length (default: [30, 18])
 
     % Save figure
     save_figure(fig, '1_absolute-pos-error', style.PNG_RESOLUTION);
+    close(fig)
 end
 
 %{
@@ -532,31 +542,48 @@ function plot_error_cdfs(joints, b_errs, a_errs, b_ys, a_ys, cdf_stats, style)
     rows = 2;
     cols = ceil(num_joints / 2);
 
-    max_b = max(cellfun(@(x) prctile(x, 98), b_errs));
-    max_a = max(cellfun(@(x) prctile(x, 98), a_errs));
-    global_max_x = max([max_b, max_a, 0.1]);
+    global_max_x = max([prctile(abs(vertcat(b_errs{:})), 98), ...
+                        prctile(abs(vertcat(a_errs{:})), 98), ...
+                        0.1]);
 
     % Create figure
     fig = figure('Name', 'Tracking Error CDFs', ...
                  'Color', style.BG_COLOR, ...
                  'Units', style.FIG_UNITS, ...
-                 'Position', [2, 2, style.FIG_WIDTH, style.FIG_HEIGHT]);
+                 'Position', [2, 2, style.FULL_PAGE_WIDTH, style.FULL_PAGE_WIDTH * 0.62]);
+    t = tiledlayout(fig, rows, cols, 'TileSpacing', 'compact', 'Padding', 'compact');
 
     for i = 1:num_joints
-        ax = subplot(rows, cols, i);
+        % Draw onto combined layout
+        %ax = subplot(rows, cols, i);
+        ax = nexttile(t);
         plot_single_cdf_axes(ax, joints{i}, b_errs{i}, a_errs{i}, b_ys{i}, a_ys{i}, ...
                              cdf_stats.b_thresh(i), cdf_stats.a_thresh(i), global_max_x, style);
-        
+
         % Save individual subfigure right after creation
-        save_figure(ax, sprintf('2_joint-tracking-error-cdf_%s', joints{i}), style.PNG_RESOLUTION);
+        %save_figure(ax, sprintf('2_joint-tracking-error-cdf_%s', joints{i}), style.PNG_RESOLUTION);
+        
+        % Export standalone subfigure to ensure clean PDF output
+        % (NOTE: this is basically the same as the second half of this function)
+        fig_i = figure('Name', sprintf('CDF_%s', joints{i}), 'Visible', 'off', ...
+                       'Color', style.BG_COLOR, ...
+                       'Units', style.FIG_UNITS, ...
+                       'Position', [2, 2, style.FIG_WIDTH * 0.66, style.FIG_HEIGHT]);
+        ax_i = axes(fig_i);
+        plot_single_cdf_axes(ax_i, joints{i}, b_errs{i}, a_errs{i}, b_ys{i}, a_ys{i}, ...
+                             cdf_stats.b_thresh(i), cdf_stats.a_thresh(i), global_max_x, style);
+
+        save_figure(fig_i, sprintf('2_joint-tracking-error-cdf_%s', joints{i}), style.PNG_RESOLUTION);
+        close(fig_i);
     end
 
     % Format legend
     if rows * cols > num_joints
         % Put legend in empty grid cell
-        subplot(rows, cols, num_joints + 1);
+        %subplot(rows, cols, num_joints + 1
+        nexttile(t, num_joints + 1);
         axis off;
-        loc = 'north';
+        loc = 'northwest';
     else
         % No empty cell available; overlay legend on the last subplot
         loc = 'northeast';
@@ -567,10 +594,11 @@ function plot_error_cdfs(joints, b_errs, a_errs, b_ys, a_ys, cdf_stats, style)
     %       so we get a legend in the empty space without an extra plot
     h1 = plot(NaN, NaN, '--', 'LineWidth', style.LINE_WIDTH, 'Color', style.COLOR_BEFORE);
     h2 = plot(NaN, NaN, '-', 'LineWidth', style.LINE_WIDTH, 'Color', style.COLOR_AFTER);
-    legend([h1, h2], {'Before variable gains', 'After variable gains'}, ...
-           'Location', loc, ...
-           'Color', style.BG_COLOR, ...
-           'FontSize', style.FONT_SIZE_LEGEND, 'TextColor', style.TEXT_COLOR);
+    lgd = legend([h1, h2], {'Before redesign', 'After redesign'}, ...
+                 'Location', loc, ...
+                 'Color', style.BG_COLOR, ...
+                 'FontSize', style.FONT_SIZE_LEGEND, 'TextColor', style.TEXT_COLOR);
+    lgd.ItemTokenSize = [12, 18];  % shrink sample line length (default: [30, 18])
 
     % Format overall figure title
     if style.SHOW_TITLES
@@ -581,6 +609,7 @@ function plot_error_cdfs(joints, b_errs, a_errs, b_ys, a_ys, cdf_stats, style)
 
     % Save figure
     save_figure(fig, '2_joint-tracking-error-cdfs', style.PNG_RESOLUTION);
+    close(fig)
 end
 
 %{
@@ -601,19 +630,25 @@ end
 %}
 function plot_single_cdf_axes(ax, joint_name, b_err, a_err, b_y, a_y, b_val, a_val, max_x, style)
     % Create figure
-    plot(b_err, b_y * 100, '--', 'Color', style.COLOR_BEFORE, 'LineWidth', style.LINE_WIDTH);
+    major_line_mult = 2;
+    plot(b_err, b_y * 100, '--', 'Color', style.COLOR_BEFORE, 'LineWidth', style.LINE_WIDTH * major_line_mult);
     hold on;
-    plot(a_err, a_y * 100, '-', 'Color', style.COLOR_AFTER, 'LineWidth', style.LINE_WIDTH);
+    plot(a_err, a_y * 100, '-', 'Color', style.COLOR_AFTER, 'LineWidth', style.LINE_WIDTH * major_line_mult);
 
-    % Draw horizontal limit + intersection
+    % Draw horizontal limit + intersections
+    minor_line_mult = 1;
     plot(ax, [0, b_val], [style.CDF_PERCENTILE, style.CDF_PERCENTILE], ...
-         ':', 'Color', style.COLOR_BEFORE, 'LineWidth', style.LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+         ':', 'Color', style.COLOR_BEFORE, 'LineWidth', style.LINE_WIDTH * minor_line_mult, ...
+         'HandleVisibility', 'off');
     plot(ax, [b_val, b_val], [0, style.CDF_PERCENTILE], ...
-         ':', 'Color', style.COLOR_BEFORE, 'LineWidth', style.LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+         ':', 'Color', style.COLOR_BEFORE, 'LineWidth', style.LINE_WIDTH * minor_line_mult, ...
+         'HandleVisibility', 'off');
     plot(ax, [0, a_val], [style.CDF_PERCENTILE, style.CDF_PERCENTILE], ...
-         ':', 'Color', style.COLOR_AFTER, 'LineWidth', style.LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+         ':', 'Color', style.COLOR_AFTER, 'LineWidth', style.LINE_WIDTH * minor_line_mult, ...
+         'HandleVisibility', 'off');
     plot(ax, [a_val, a_val], [0, style.CDF_PERCENTILE], ...
-         ':', 'Color', style.COLOR_AFTER, 'LineWidth', style.LINE_WIDTH / 1.75, 'HandleVisibility', 'off');
+         ':', 'Color', style.COLOR_AFTER, 'LineWidth', style.LINE_WIDTH * minor_line_mult, ...
+         'HandleVisibility', 'off');
 
     if style.SHOW_CDF_LABELS
         rgb_before = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', style.COLOR_BEFORE);
@@ -627,7 +662,7 @@ function plot_single_cdf_axes(ax, joint_name, b_err, a_err, b_y, a_y, b_val, a_v
         text(ax, max_x * 0.95, 22, label_str, ...
              'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
              'BackgroundColor', [style.BG_COLOR, 0.85], 'EdgeColor', style.GRID_COLOR, ...
-             'FontSize', style.FONT_SIZE_AXIS - 4, ...
+             'FontSize', style.FONT_SIZE_AXIS - 2, ...
              'Color', style.TEXT_COLOR);
     end
 
@@ -643,7 +678,7 @@ function plot_single_cdf_axes(ax, joint_name, b_err, a_err, b_y, a_y, b_val, a_v
     % NOTE: the per-joint title always displays, regardless of SHOW_TITLES,
     %       since it's the only thing identifying which joint this plot shows
     title(ax, sprintf('%s', joint_name), ...
-          'FontSize', style.FONT_SIZE_TITLE, 'FontWeight', style.TITLE_WEIGHT, ...
+          'FontSize', style.FONT_SIZE_TITLE, 'FontWeight', style.LABEL_WEIGHT, ...
           'Color', style.TEXT_COLOR);
     xlabel(ax, 'Absolute Error (deg)', ...
                'FontSize', style.FONT_SIZE_AXIS, ...
@@ -688,6 +723,8 @@ end
     @param style   Struct containing plot/figure style definitions
 %}
 function plot_rmse_radar(joints, b_rmse, a_rmse, style)
+    global DEG_SYM;
+
     num_joints = length(joints);
 
     % Project polar → Cartesian (X/Y)
@@ -708,12 +745,12 @@ function plot_rmse_radar(joints, b_rmse, a_rmse, style)
 
     % 1) Draw background rings
     absolute_max = max([b_rmse, a_rmse]);
-    step_val = 1.0;
-
     if absolute_max <= 2
         step_val = 0.5;
     elseif absolute_max > 5
         step_val = 5.0;
+    else
+        step_val = 1.0;
     end
 
     max_scale = ceil(absolute_max / step_val) * step_val;
@@ -729,47 +766,81 @@ function plot_rmse_radar(joints, b_rmse, a_rmse, style)
     
     % 2) Draw spokes
     spoke_color = max(style.GRID_COLOR * 0.85, 0.0);
-
     for j = 1:num_joints
         plot([0, max_scale * cos(angles(j))], [0, max_scale * sin(angles(j))], '-', ...
             'Color', spoke_color, ...
             'HandleVisibility', 'off');
-        text(max_scale * 1.18 * cos(angles(j)), max_scale * 1.18 * sin(angles(j)), ...
+        text(max_scale * 1.15 * cos(angles(j)), max_scale * 1.15 * sin(angles(j)), ...
             joints{j}, ...
-            'HorizontalAlignment', 'center', ...
-            'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.TITLE_WEIGHT, ...
+            'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+            'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.LABEL_WEIGHT, ...
             'Color', style.TEXT_COLOR);
     end
     
     % 3) Overlay patch boundaries
     hb = patch(bx, by, style.COLOR_BEFORE, ...
-               'DisplayName', 'Before variable gains', ...
+               'DisplayName', 'Before redesign', ...
                'FaceAlpha', 0.12, ...
-               'EdgeColor', style.COLOR_BEFORE, ...
-               'LineWidth', style.LINE_WIDTH);
+               'EdgeColor', style.COLOR_BEFORE, 'LineWidth', style.LINE_WIDTH);
     ha = patch(ax, ay, style.COLOR_AFTER, ...
-               'DisplayName', 'After variable gains', ...
+               'DisplayName', 'After redesign', ...
                'FaceAlpha', 0.12, ...
-               'EdgeColor', style.COLOR_AFTER, ...
-               'LineWidth', style.LINE_WIDTH);
+               'EdgeColor', style.COLOR_AFTER, 'LineWidth', style.LINE_WIDTH);
 
     % 4) Plot values next to each peak
     value_offset = max_scale * 0.09; 
     for j = 1:num_joints
-        bx_text = (b_rmse(j) + value_offset) * cos(angles(j));
-        by_text = (b_rmse(j) + value_offset) * sin(angles(j));
-        text(bx_text, by_text, sprintf('%.2f^\\circ', b_rmse(j)), ...
+        %bx_text = (b_rmse(j) + value_offset) * cos(angles(j));
+        %by_text = (b_rmse(j) + value_offset) * sin(angles(j));
+        %text(bx_text, by_text, sprintf('%.2f%s', b_rmse(j), DEG_SYM), ...
+        %     'FontSize', style.FONT_SIZE_AXIS - 4, 'FontWeight', 'bold', ...
+        %     'Color', style.COLOR_BEFORE, ...
+        %     'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
+        % 
+        %ax_text = (a_rmse(j) + value_offset) * cos(angles(j));
+        %ay_text = (a_rmse(j) + value_offset) * sin(angles(j));
+        %text(ax_text, ay_text, sprintf('%.2f%s', a_rmse(j), DEG_SYM), ...
+        %     'FontSize', style.FONT_SIZE_AXIS - 4, 'FontWeight', 'bold', ...
+        %     'Color', style.COLOR_AFTER, ...
+        %     'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
+
+        ang = angles(j);
+        r_pos = max(b_rmse(j), a_rmse(j)) * 1.15;
+
+        if cos(ang) > 0.15
+            h_align = 'left';
+        elseif cos(ang) < -0.15
+            h_align = 'right';
+        else
+            h_align = 'center';
+        end
+
+        if sin(ang) > 0.15
+            v_align = 'bottom';
+        elseif sin(ang) < -0.15
+            v_align = 'top';
+        else
+            v_align = 'middle';
+        end
+
+        x_pos = r_pos * cos(ang);
+        y_pos = r_pos * sin(ang);
+
+        text(x_pos, y_pos + value_offset, sprintf('%.2f%s', b_rmse(j), DEG_SYM), ...
              'FontSize', style.FONT_SIZE_AXIS - 4, 'FontWeight', 'bold', ...
              'Color', style.COLOR_BEFORE, ...
-             'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
-         
-        ax_text = (a_rmse(j) + value_offset) * cos(angles(j));
-        ay_text = (a_rmse(j) + value_offset) * sin(angles(j));
-        text(ax_text, ay_text, sprintf('%.2f^\\circ', a_rmse(j)), ...
+             'HorizontalAlignment', h_align, 'VerticalAlignment', v_align);
+
+        text(x_pos, y_pos - value_offset, sprintf('%.2f%s', a_rmse(j), DEG_SYM), ...
              'FontSize', style.FONT_SIZE_AXIS - 4, 'FontWeight', 'bold', ...
              'Color', style.COLOR_AFTER, ...
-             'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
+             'HorizontalAlignment', h_align, 'VerticalAlignment', v_align);
     end
+
+    % Extra: define explicit bounds to prevent clipping in PDF output
+    limit_val = max_scale * 1.35;
+    xlim([-limit_val, limit_val]);
+    ylim([-limit_val, limit_val]);
     
     % Format plot
     axis equal; axis off;  % remove axis visibility as it's not used here
@@ -781,13 +852,15 @@ function plot_rmse_radar(joints, b_rmse, a_rmse, style)
     end
     
     % Format legend
-    legend([hb, ha], {'Before variable gains', 'After variable gains'}, ...
-           'Location', 'east', ...
-           'Color',  style.BG_COLOR, ...
-           'FontSize',  style.FONT_SIZE_LEGEND, 'TextColor',  style.TEXT_COLOR);
+    lgd = legend([hb, ha], {'Before redesign', 'After redesign'}, ...
+                 'Location', 'southoutside', ...
+                 'Color',  style.BG_COLOR, ...
+                 'FontSize',  style.FONT_SIZE_LEGEND, 'TextColor',  style.TEXT_COLOR);
+    lgd.ItemTokenSize = [12, 18];  % shrink sample line length (default: [30, 18])
 
     % Save figure
     save_figure(fig, '3_joint-tracking-rmse-profile', style.PNG_RESOLUTION);
+    close(fig)
 end
 
 %{
@@ -850,17 +923,19 @@ function plot_torque_jitter(joints, b_jitter, a_jitter, style)
               'Color', style.TEXT_COLOR);
     end
     ylabel('Torque Rate RMS (Nm/s)', ...
-           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.TITLE_WEIGHT, ...
+           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.LABEL_WEIGHT, ...
            'Color', style.TEXT_COLOR);
 
     % Format legend
-    legend({'Before Variable Gains', 'After Variable Gains'}, ...
-           'Location', 'best', ...
-           'Color', style.BG_COLOR, ...
-           'FontSize', style.FONT_SIZE_LEGEND, 'TextColor', style.TEXT_COLOR);
+    lgd = legend({'Before redesign', 'After redesign'}, ...
+                 'Location', 'northeast', ...
+                 'Color', style.BG_COLOR, ...
+                 'FontSize', style.FONT_SIZE_LEGEND, 'TextColor', style.TEXT_COLOR);
+    lgd.ItemTokenSize = [12, 18];  % shrink sample line length (default: [30, 18])
 
     % Save figure
     save_figure(fig, '4_torque-jitter-rms', style.PNG_RESOLUTION);
+    close(fig)
 end
 
 %% FUNCTIONS (HELPERS)
@@ -1113,6 +1188,6 @@ function save_figure(handle, filename, png_resolution)
     % Save raster and vector image files
     exportgraphics(handle, fullfile(fig_dir, [filename '.png']), ...
                    'Padding', 'tight', 'Resolution', png_resolution);
-    exportgraphics(handle, fullfile(fig_dir, [filename '.pdf']), ...
-                   'Padding', 'tight', 'ContentType', 'vector');
+    %exportgraphics(handle, fullfile(fig_dir, [filename '.pdf']), ...  % PDFs look terrible!!
+    %               'Padding', 'tight', 'ContentType', 'vector');
 end
