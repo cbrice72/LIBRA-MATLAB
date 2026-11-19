@@ -18,6 +18,7 @@ print_full_width  = false;       % whether to save half- or full-page-width figu
 
 % Plot style settings
 style.TITLE_WEIGHT  = 'bold';
+style.LABEL_WEIGHT  = 'normal';
 
 style.COLOR_PRIMARY = [0.20, 0.40, 0.60];  % blue
 style.TEXT_COLOR    = 'k';  % black
@@ -45,7 +46,8 @@ if strcmpi(publication_style, 'springer')
 
     style.LINE_WIDTH       = 1.0;  % must be > 0.25
 else
-    % Safe default for web
+    style.LABEL_WEIGHT     = style.TITLE_WEIGHT;  % improve visibility
+
     style.FIG_UNITS        = 'auto';
     style.FIG_WIDTH        = 1200;
     style.FIG_HEIGHT       = style.FIG_WIDTH * 0.62;  % arbitrary
@@ -287,10 +289,19 @@ function plot_histogram(out_dir, filename, hist_centers, hist_values, center_lbl
     hold on;
 
     % Create histogram
-    bar(hist_centers, hist_values, style.BAR_WIDTH, ...
-        'FaceColor', style.COLOR_PRIMARY, ...
-        'EdgeColor', 'none', ...
-        'FaceAlpha', 0.7);
+    %bar(hist_centers, hist_values, style.BAR_WIDTH, ...
+    %    'FaceColor', style.COLOR_PRIMARY, ...
+    %    'EdgeColor', 'none', ...
+    %    'FaceAlpha', 0.7);
+
+    % Create histogram (single patch, avoids bar edge artifacts in vectorized output)
+    bin_width = mean(diff(hist_centers)) * style.BAR_WIDTH;
+    edges = [hist_centers - bin_width/2; hist_centers(end) + bin_width/2];
+    xs = reshape([edges(1:end-1)'; edges(2:end)'], 1, []);
+    ys = reshape([hist_values'; hist_values'], 1, []);
+    xs = [xs(1), xs, xs(end)];
+    ys = [0, ys, 0];
+    patch(xs, ys, style.COLOR_PRIMARY, 'EdgeColor', 'none', 'FaceAlpha', 0.7);
 
     xlim(x_limits);
     y_max_rounded = ceil(max(hist_values) / 500) * 500;
@@ -316,10 +327,10 @@ function plot_histogram(out_dir, filename, hist_centers, hist_values, center_lbl
     end
 
     xlabel([distribution_lbl ' (m)'], ...
-           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.TITLE_WEIGHT, ...
+           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.LABEL_WEIGHT, ...
            'Color', style.TEXT_COLOR);
     ylabel('Point Count', ...
-           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.TITLE_WEIGHT, ...
+           'FontSize', style.FONT_SIZE_AXIS, 'FontWeight', style.LABEL_WEIGHT, ...
            'Color', style.TEXT_COLOR);
 
     % Format legend
