@@ -15,7 +15,7 @@ close all;
 %% SETUP
 
 % Working files
-in_file = 'E:\LIBRA Archive\2024-12-09 LIBRA-II Test 1kg (no REVJNT)\profile_unfixed (bottle)_v2.txt';
+in_file = 'E:\LIBRA Archive\LIBRA-II\2024-12-09 Payload Test 1kg (no REVJNT)\profile_unfixed (bottle)_v2.txt';
 
 % Physical properties
 %min_length = 1.05; % est. minimum arm length of LIBRA-II, in m
